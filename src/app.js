@@ -16,5 +16,8 @@ app.use('/api/auth', require('./routes/authRoutes'));
 // Staff routes: /api/staff/add-staff, /api/staff/all
 app.use('/api/staff', require('./routes/staffRoutes'));
 
+// Inventory routes: /api/inventory/medicines, /api/inventory/expiring, /api/inventory/alerts, etc.
+app.use('/api/inventory', require('./routes/inventoryRoutes'));
+
 //This exports the Express app so server.js can use it.
 module.exports=app;
