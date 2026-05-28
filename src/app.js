@@ -19,5 +19,8 @@ app.use('/api/staff', require('./routes/staffRoutes'));
 // Inventory routes: /api/inventory/medicines, /api/inventory/expiring, /api/inventory/alerts, etc.
 app.use('/api/inventory', require('./routes/inventoryRoutes'));
 
+// Patient routes: /api/patients/register, /api/patients, /api/patients/search, /api/patients/:id, /api/patients/:id/history
+app.use('/api/patients', require('./routes/patientRoutes'));
+
 //This exports the Express app so server.js can use it.
 module.exports=app;
