@@ -123,8 +123,8 @@ const loginUser = async (req, res) => {
         } else {
             // STEP 3: If not found in doctors, check staff table (by username)
             const [staffList] = await connection.query(
-                'SELECT * FROM staff WHERE username = ? AND is_active = ?',
-                [identifier, true]
+                'SELECT * FROM staff WHERE (email = ? OR name = ?) AND is_active = ?',
+                [identifier, identifier, true]
             );
 
             if (staffList.length > 0) {

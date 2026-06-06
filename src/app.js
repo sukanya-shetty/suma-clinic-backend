@@ -22,8 +22,14 @@ app.use('/api/inventory', require('./routes/inventoryRoutes'));
 // Patient routes: /api/patients/register, /api/patients, /api/patients/search, /api/patients/:id, /api/patients/:id/history
 app.use('/api/patients', require('./routes/patientRoutes'));
 
+// Debug routes (temporary): removed after verification
+// app.use('/api/debug', require('./routes/debugRoutes'));
+
 // Visit routes: /api/visits, /api/visits/:patient_id, /api/visits/:id (PUT/DELETE)
 app.use('/api/visits', require('./routes/visitRoutes'));
+
+// Prescription routes: /api/prescriptions, /api/prescriptions/:visit_id, /api/prescriptions/:id (PUT/DELETE)
+app.use('/api/prescriptions', require('./routes/prescriptionRoutes'));
 
 //This exports the Express app so server.js can use it.
 module.exports=app;
