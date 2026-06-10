@@ -103,7 +103,8 @@ const getAllMedicines = async (req, res) => {
 // Returns: 200 OK with alert info / 400 Bad Request / 404 Not Found / 500 Error
 const updateMedicineStock = async (req, res) => {
     try {
-        const { medicineId, quantitySold } = req.body;
+        const medicineId = req.params.id || req.body.medicineId;
+        const { quantitySold } = req.body;
 
         // STEP 1: Validate fields
         if (!medicineId || !quantitySold) {
@@ -211,7 +212,7 @@ const getExpiringMedicines = async (req, res) => {
 // Returns: 200 OK / 404 Not Found / 500 Error
 const deleteMedicine = async (req, res) => {
     try {
-        const { medicineId } = req.body;
+        const medicineId = req.params.id || req.body.medicineId;
 
         // STEP 1: Validate field
         if (!medicineId) {

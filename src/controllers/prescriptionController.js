@@ -106,17 +106,14 @@ const createPrescription = async (req, res) => {
                 };
 
                 await connection.query(
-                    'INSERT INTO audit_log (entity_type, entity_id, action, user_id, user_name, role, before_data, after_data, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    'INSERT INTO audit_log (doctor_id, action, table_name, record_id, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?)',
                     [
-                        'prescription',
-                        insertResult.insertId,
-                        'CREATE',
                         req.user ? req.user.id : null,
-                        req.user ? req.user.name : null,
-                        req.user ? req.user.role : null,
+                        'PRESCRIPTION_CREATED',
+                        'prescriptions',
+                        insertResult.insertId,
                         null,
-                        JSON.stringify(after),
-                        JSON.stringify({ ip: req.ip || null })
+                        JSON.stringify(after)
                     ]
                 );
             } catch (auditErr) {
@@ -299,17 +296,14 @@ const updatePrescription = async (req, res) => {
                 const after = updatedPrescription[0];
 
                 await connection.query(
-                    'INSERT INTO audit_log (entity_type, entity_id, action, user_id, user_name, role, before_data, after_data, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    'INSERT INTO audit_log (doctor_id, action, table_name, record_id, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?)',
                     [
-                        'prescription',
-                        prescription_id,
-                        'UPDATE',
                         req.user ? req.user.id : null,
-                        req.user ? req.user.name : null,
-                        req.user ? req.user.role : null,
+                        'PRESCRIPTION_UPDATED',
+                        'prescriptions',
+                        prescription_id,
                         JSON.stringify(before),
-                        JSON.stringify(after),
-                        JSON.stringify({ ip: req.ip || null })
+                        JSON.stringify(after)
                     ]
                 );
             } catch (auditErr) {
@@ -389,17 +383,14 @@ const deletePrescription = async (req, res) => {
                 const before = prescriptionExists[0];
 
                 await connection.query(
-                    'INSERT INTO audit_log (entity_type, entity_id, action, user_id, user_name, role, before_data, after_data, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    'INSERT INTO audit_log (doctor_id, action, table_name, record_id, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?)',
                     [
-                        'prescription',
-                        prescription_id,
-                        'DELETE',
                         req.user ? req.user.id : null,
-                        req.user ? req.user.name : null,
-                        req.user ? req.user.role : null,
+                        'PRESCRIPTION_DELETED',
+                        'prescriptions',
+                        prescription_id,
                         JSON.stringify(before),
-                        null,
-                        JSON.stringify({ ip: req.ip || null })
+                        null
                     ]
                 );
             } catch (auditErr) {

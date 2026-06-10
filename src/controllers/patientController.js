@@ -292,7 +292,7 @@ const getPatientHistory = async (req, res) => {
 
         // STEP 3: Get all visits for this patient (ordered by date, newest first)
         const [visits] = await pool.query(
-            'SELECT visit_id, visit_date, diagnosis, bp_level, sugar_level, temperature, notes FROM visits WHERE patient_id = ? ORDER BY visit_date DESC',
+            'SELECT visit_id, visit_date, diagnosis, blood_pressure, temperature, notes FROM visits WHERE patient_id = ? ORDER BY visit_date DESC',
             [patientId]
         );
 
@@ -300,7 +300,17 @@ const getPatientHistory = async (req, res) => {
         const visitsWithPrescriptions = [];
         for (const visit of visits) {
             const [prescriptions] = await pool.query(
-                'SELECT prescription_id, medicine_name, dosage, duration, instructions, quantity_dispensed, price FROM prescriptions WHERE visit_id = ?',
+                `SELECT 
+                    p.prescription_id, 
+                    p.medicine_id, 
+                    m.medicine_name, 
+                    p.dosage, 
+                    p.quantity, 
+                    p.duration_days, 
+                    p.created_at 
+                FROM prescriptions p 
+                JOIN medicines m ON p.medicine_id = m.medicine_id 
+                WHERE p.visit_id = ?`,
                 [visit.visit_id]
             );
 
