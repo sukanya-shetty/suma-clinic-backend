@@ -234,11 +234,29 @@ const deleteVisit = async (req, res) => {
     }
 };
 
+const getRecentVisits = async (req, res) => {
+    try {
+        const [visits] = await pool.query(
+            `SELECT v.visit_id, v.patient_id, p.patient_name, v.visit_date, v.diagnosis, v.blood_pressure, v.temperature, v.notes 
+             FROM visits v 
+             JOIN patients p ON v.patient_id = p.patient_id 
+             ORDER BY v.visit_date DESC LIMIT 10`
+        );
+        return res.status(200).json({
+            success: true,
+            visits
+        });
+    } catch (error) {
+        console.error('Error in getRecentVisits:', error);
+        return res.status(500).json({ error: 'Database error while fetching recent visits' });
+    }
+};
 
 // Export all functions
 module.exports = {
     createVisit,
     getPatientVisits,
     updateVisit,
-    deleteVisit
+    deleteVisit,
+    getRecentVisits
 };

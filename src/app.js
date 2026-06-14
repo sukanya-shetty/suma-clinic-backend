@@ -31,5 +31,8 @@ app.use('/api/visits', require('./routes/visitRoutes'));
 // Prescription routes: /api/prescriptions, /api/prescriptions/:visit_id, /api/prescriptions/:id (PUT/DELETE)
 app.use('/api/prescriptions', require('./routes/prescriptionRoutes'));
 
+// Sales routes: /api/sales
+app.use('/api/sales', require('./routes/salesRoutes'));
+
 //This exports the Express app so server.js can use it.
 module.exports=app;

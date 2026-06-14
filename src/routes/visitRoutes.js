@@ -55,6 +55,9 @@ router.post('/', authMiddleware, authorizeRole('Doctor'), visitController.create
 //     ]
 //   }
 // ============================================================================
+// GET /api/visits/recent/all
+router.get('/recent/all', authMiddleware, visitController.getRecentVisits);
+
 router.get('/:patient_id', authMiddleware, visitController.getPatientVisits);
 
 
