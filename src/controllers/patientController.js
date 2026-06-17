@@ -134,13 +134,12 @@ const searchPatients = async (req, res) => {
 
 // ===== FUNCTION 4: updatePatient() =====
 // Purpose: Update patient information by patient_id
-// Input: { name, age, gender, address }
-// NOTE: Phone number CANNOT be changed (unique key)
+// Input: { name, phone_number, age, gender, address }
 // Returns: 200 OK / 400 Bad Request / 404 Not Found / 500 Error
 const updatePatient = async (req, res) => {
     try {
         const patientId = req.params.id;
-        const { name, age, gender, address } = req.body;
+        const { name, phone_number, age, gender, address } = req.body;
 
         // STEP 1: Validate patient_id
         if (!patientId) {
@@ -164,6 +163,22 @@ const updatePatient = async (req, res) => {
         if (name) {
             updateFields.push('patient_name = ?');
             updateValues.push(name);
+        }
+        if (phone_number) {
+            // Validate phone_number is exactly 10 digits
+            if (!phone_number.match(/^\d{10}$/)) {
+                return res.status(400).json({ error: 'Phone number must be exactly 10 digits' });
+            }
+            // Check uniqueness
+            const [phoneDuplicate] = await pool.query(
+                'SELECT patient_id FROM patients WHERE phone_number = ? AND patient_id != ?',
+                [phone_number, patientId]
+            );
+            if (phoneDuplicate.length > 0) {
+                return res.status(400).json({ error: 'Another patient is already registered with this phone number' });
+            }
+            updateFields.push('phone_number = ?');
+            updateValues.push(phone_number);
         }
         if (age) {
             // Validate age
@@ -189,7 +204,7 @@ const updatePatient = async (req, res) => {
 
         // STEP 4: If no fields to update, return error
         if (updateFields.length === 0) {
-            return res.status(400).json({ error: 'No fields to update. Provide name, age, gender, or address.' });
+            return res.status(400).json({ error: 'No fields to update. Provide name, phone_number, age, gender, or address.' });
         }
 
         // STEP 5: Add patient_id to query parameters

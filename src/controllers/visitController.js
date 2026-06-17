@@ -12,22 +12,25 @@ const createVisit = async (req, res) => {
         const doctor_id = req.user.id; // Get doctor_id from JWT token (authMiddleware decoded it)
 
         // STEP 2: Validate all required fields exist
-        if (!patient_id || !visit_date || !diagnosis || !blood_pressure || !temperature) {
+        if (!patient_id || !visit_date) {
             return res.status(400).json({ 
-                error: 'Required fields: patient_id, visit_date, diagnosis, blood_pressure, temperature' 
+                error: 'Required fields: patient_id, visit_date' 
             });
         }
 
+        const finalDiagnosis = diagnosis ? diagnosis.trim() : 'General Visit';
+        const finalBloodPressure = blood_pressure || 'N/A';
+        const finalTemperature = temperature ? parseFloat(temperature) : 98.6;
+
         // STEP 3: Validate blood_pressure format (should be like "120/80")
-        if (!blood_pressure.match(/^\d+\/\d+$/)) {
+        if (finalBloodPressure !== 'N/A' && !finalBloodPressure.match(/^\d+\/\d+$/)) {
             return res.status(400).json({ 
                 error: 'Blood pressure must be in format: SYS/DIA (e.g., 120/80)' 
             });
         }
 
         // STEP 4: Validate temperature is a number between 90 and 110 (realistic range)
-        const temp = parseFloat(temperature);
-        if (isNaN(temp) || temp < 90 || temp > 110) {
+        if (isNaN(finalTemperature) || finalTemperature < 90 || finalTemperature > 110) {
             return res.status(400).json({ 
                 error: 'Temperature must be a number between 90 and 110' 
             });
@@ -47,7 +50,7 @@ const createVisit = async (req, res) => {
         // doctor_id is taken from JWT token (req.user.id) - cannot be spoofed
         const [result] = await pool.query(
             'INSERT INTO visits (doctor_id, patient_id, visit_date, diagnosis, blood_pressure, temperature, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [doctor_id, patient_id, visit_date, diagnosis, blood_pressure, temperature, notes || null]
+            [doctor_id, patient_id, visit_date, finalDiagnosis, finalBloodPressure, finalTemperature, notes || null]
         );
 
         // STEP 7: Return success with new visit_id
@@ -58,9 +61,9 @@ const createVisit = async (req, res) => {
                 doctor_id: doctor_id,
                 patient_id: patient_id,
                 visit_date: visit_date,
-                diagnosis: diagnosis,
-                blood_pressure: blood_pressure,
-                temperature: temperature,
+                diagnosis: finalDiagnosis,
+                blood_pressure: finalBloodPressure,
+                temperature: finalTemperature,
                 notes: notes || null
             }
         });
@@ -136,32 +139,32 @@ const updateVisit = async (req, res) => {
         const updateFields = [];
         const updateValues = [];
 
-        if (diagnosis) {
+        if (diagnosis !== undefined) {
             updateFields.push('diagnosis = ?');
-            updateValues.push(diagnosis);
+            updateValues.push(diagnosis ? diagnosis.trim() : 'General Visit');
         }
 
-        if (blood_pressure) {
+        if (blood_pressure !== undefined) {
             // Validate blood_pressure format
-            if (!blood_pressure.match(/^\d+\/\d+$/)) {
+            if (blood_pressure && blood_pressure !== 'N/A' && !blood_pressure.match(/^\d+\/\d+$/)) {
                 return res.status(400).json({ 
                     error: 'Blood pressure must be in format: SYS/DIA (e.g., 120/80)' 
                 });
             }
             updateFields.push('blood_pressure = ?');
-            updateValues.push(blood_pressure);
+            updateValues.push(blood_pressure || 'N/A');
         }
 
-        if (temperature) {
+        if (temperature !== undefined) {
             // Validate temperature is a number
-            const temp = parseFloat(temperature);
-            if (isNaN(temp) || temp < 90 || temp > 110) {
+            const tempVal = temperature ? parseFloat(temperature) : 98.6;
+            if (isNaN(tempVal) || tempVal < 90 || tempVal > 110) {
                 return res.status(400).json({ 
                     error: 'Temperature must be a number between 90 and 110' 
                 });
             }
             updateFields.push('temperature = ?');
-            updateValues.push(temperature);
+            updateValues.push(tempVal);
         }
 
         if (notes !== undefined) {
@@ -234,11 +237,29 @@ const deleteVisit = async (req, res) => {
     }
 };
 
+const getRecentVisits = async (req, res) => {
+    try {
+        const [visits] = await pool.query(
+            `SELECT v.visit_id, v.patient_id, p.patient_name, v.visit_date, v.diagnosis, v.blood_pressure, v.temperature, v.notes 
+             FROM visits v 
+             JOIN patients p ON v.patient_id = p.patient_id 
+             ORDER BY v.visit_date DESC LIMIT 10`
+        );
+        return res.status(200).json({
+            success: true,
+            visits
+        });
+    } catch (error) {
+        console.error('Error in getRecentVisits:', error);
+        return res.status(500).json({ error: 'Database error while fetching recent visits' });
+    }
+};
 
 // Export all functions
 module.exports = {
     createVisit,
     getPatientVisits,
     updateVisit,
-    deleteVisit
+    deleteVisit,
+    getRecentVisits
 };

@@ -6,7 +6,7 @@ const pool = require('../config/db');
 // Returns: 201 Created / 200 Updated / 400 Bad Request / 500 Error
 const addMedicine = async (req, res) => {
     try {
-        const { name, price, quantity, expiryDate } = req.body;
+        const { name, price, quantity, expiryDate, batch_number, supplier_name, purchase_price } = req.body;
 
         // STEP 1: Validate all fields exist
         if (!name || !price || !quantity || !expiryDate) {
@@ -24,15 +24,18 @@ const addMedicine = async (req, res) => {
             [name]
         );
 
-        // STEP 4: If exists → UPDATE quantity
+        // STEP 4: If exists → UPDATE quantity and attributes
         if (existingMedicine.length > 0) {
             const existingId = existingMedicine[0].medicine_id;
             const oldQuantity = existingMedicine[0].quantity;
             const newQuantity = oldQuantity + parseInt(quantity);
 
             await pool.query(
-                'UPDATE medicines SET quantity = ?, price = ? WHERE medicine_id = ?',
-                [newQuantity, price, existingId]
+                `UPDATE medicines 
+                 SET quantity = ?, price = ?, batch_number = COALESCE(?, batch_number), 
+                     supplier_name = COALESCE(?, supplier_name), purchase_price = COALESCE(?, purchase_price) 
+                 WHERE medicine_id = ?`,
+                [newQuantity, price, batch_number || null, supplier_name || null, purchase_price || null, existingId]
             );
 
             return res.status(200).json({
@@ -50,8 +53,9 @@ const addMedicine = async (req, res) => {
 
         // STEP 5: If NOT exists → INSERT new medicine (store name as LOWERCASE)
         const [result] = await pool.query(
-            'INSERT INTO medicines (medicine_name, price, quantity, expiry_date) VALUES (LOWER(?), ?, ?, ?)',
-            [name, price, quantity, expiryDate]
+            `INSERT INTO medicines (medicine_name, price, quantity, expiry_date, batch_number, supplier_name, purchase_price) 
+             VALUES (LOWER(?), ?, ?, ?, ?, ?, ?)`,
+            [name, price, quantity, expiryDate, batch_number || null, supplier_name || null, purchase_price || null]
         );
 
         return res.status(201).json({

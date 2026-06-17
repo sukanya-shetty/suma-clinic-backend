@@ -7,7 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'suma_clinic_secret_key_jwt_token';
 
 // Generate a valid token for Doctor ID 1
 const doctorToken = jwt.sign(
-    { id: 1, name: 'Dr. Rama Sharma', role: 'Doctor' },
+    { id: 1, name: 'Dr. Abhinava Shetty', role: 'Doctor' },
     JWT_SECRET,
     { expiresIn: '1h' }
 );
