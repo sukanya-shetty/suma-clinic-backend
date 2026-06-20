@@ -154,10 +154,11 @@ app.get('/api/patients/:id/history', honoAuthMiddleware, makeHandler(patientCont
 
 // 5. Visit routes
 app.post('/api/visits', honoAuthMiddleware, makeHandler(visitController.createVisit));
+app.get('/api/visits/recent/all', honoAuthMiddleware, makeHandler(visitController.getRecentVisits));
 app.get('/api/visits/:patient_id', honoAuthMiddleware, makeHandler(visitController.getPatientVisits));
 app.put('/api/visits/:id', honoAuthMiddleware, makeHandler(visitController.updateVisit));
 app.delete('/api/visits/:id', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(visitController.deleteVisit));
-app.get('/api/visits/recent', honoAuthMiddleware, makeHandler(visitController.getRecentVisits));
+
 
 // 6. Prescription routes
 app.post('/api/prescriptions', honoAuthMiddleware, makeHandler(prescriptionController.createPrescription));
