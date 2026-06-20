@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clinic-backend",
+  "main": "src/index.js",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "clinic-db",
+      "database_id": "32add67f-e494-45fb-9341-98dcea3a3b78"
+    }
+  ],
+  "vars": {
+    "JWT_EXPIRES_IN": "12h",
+    "JWT_SECRET": "suma_clinic_secret_key_jwt_token"
+  }
+}

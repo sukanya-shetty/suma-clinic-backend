@@ -193,7 +193,7 @@ const getExpiringMedicines = async (req, res) => {
     try {
         // STEP 1: Query medicines where expiry date < NOW() + 30 days
         const [expiringMedicines] = await pool.query(
-            'SELECT medicine_id, medicine_name, quantity, expiry_date FROM medicines WHERE expiry_date < DATE_ADD(NOW(), INTERVAL 30 DAY) ORDER BY expiry_date ASC'
+            "SELECT medicine_id, medicine_name, quantity, expiry_date FROM medicines WHERE expiry_date < date('now', '+30 days') ORDER BY expiry_date ASC"
         );
 
         // STEP 2: Return results
