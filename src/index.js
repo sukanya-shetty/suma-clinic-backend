@@ -125,6 +125,9 @@ const prescriptionController = require('./controllers/prescriptionController');
 const salesController = require('./controllers/salesController');
 
 // Define API Routes
+app.get('/api', (c) => c.json({ success: true, message: 'Clinic API is running!' }));
+app.get('/api/', (c) => c.json({ success: true, message: 'Clinic API is running!' }));
+
 // 1. Auth routes
 app.post('/api/auth/login', makeHandler(authController.loginUser));
 app.post('/api/auth/register', makeHandler(authController.registerUser));
