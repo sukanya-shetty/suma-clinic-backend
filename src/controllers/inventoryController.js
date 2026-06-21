@@ -191,9 +191,13 @@ const updateMedicineStock = async (req, res) => {
 // Returns: 200 OK with array / 500 Error
 const getExpiringMedicines = async (req, res) => {
     try {
-        // STEP 1: Query medicines where expiry date < NOW() + 30 days
+        // STEP 1: Query medicines where expiry date < 30 days from now
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + 30);
+        const targetDateString = targetDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
         const [expiringMedicines] = await pool.query(
-            "SELECT medicine_id, medicine_name, quantity, expiry_date FROM medicines WHERE expiry_date < date('now', '+30 days') ORDER BY expiry_date ASC"
+            "SELECT medicine_id, medicine_name, quantity, expiry_date FROM medicines WHERE expiry_date < ? ORDER BY expiry_date ASC",
+            [targetDateString]
         );
 
         // STEP 2: Return results
