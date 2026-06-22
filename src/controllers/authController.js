@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const { Resend } = require('resend');
 
 // ============================================================
 // REGISTER DOCTOR (ONE-TIME ONLY)
@@ -266,21 +267,18 @@ const forgotPassword = async (req, res) => {
         
         const apiKey = req.env && req.env.RESEND_API_KEY;
         if (apiKey) {
-            await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    from: 'Suma Clinic <onboarding@resend.dev>',
-                    to: email,
-                    subject: 'Password Reset Request - Suma Clinic',
-                    html: `<p>You requested a password reset. Click the link below to reset your password:</p>
-                           <p><a href="${resetLink}">${resetLink}</a></p>
-                           <p>This link will expire in 1 hour.</p>`
-                }),
+            const resend = new Resend(apiKey);
+            const { error: sendError } = await resend.emails.send({
+                from: 'Suma Clinic <onboarding@resend.dev>',
+                to: email,
+                subject: 'Password Reset Request - Suma Clinic',
+                html: `<p>You requested a password reset. Click the link below to reset your password:</p>
+                       <p><a href="${resetLink}">${resetLink}</a></p>
+                       <p>This link will expire in 1 hour.</p>`
             });
+            if (sendError) {
+                console.error('Resend email sending failed:', sendError.message);
+            }
         } else {
             console.log(`[PASS_RESET_MOCK_EMAIL] Sent to ${email}. Reset Link: ${resetLink}`);
         }
