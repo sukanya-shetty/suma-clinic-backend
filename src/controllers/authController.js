@@ -194,7 +194,202 @@ const loginUser = async (req, res) => {
     }
 };
 
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'Email is required' });
+        }
+
+        const connection = await pool.getConnection();
+        let user = null;
+        let userType = null;
+
+        // Check doctors table
+        const [doctors] = await connection.query(
+            'SELECT * FROM doctors WHERE email = ? AND is_active = ?',
+            [email, true]
+        );
+
+        if (doctors.length > 0) {
+            user = doctors[0];
+            userType = 'doctor';
+        } else {
+            // Check staff table
+            const [staffList] = await connection.query(
+                'SELECT * FROM staff WHERE email = ? AND is_active = ?',
+                [email, true]
+            );
+
+            if (staffList.length > 0) {
+                user = staffList[0];
+                userType = 'staff';
+            }
+        }
+
+        if (!user) {
+            connection.release();
+            return res.status(200).json({
+                success: true,
+                message: 'If the email exists, a password reset link has been sent.'
+            });
+        }
+
+        // Generate reset token using Web Crypto
+        const array = new Uint8Array(20);
+        crypto.getRandomValues(array);
+        const token = Array.from(array, dec => dec.toString(16).padStart(2, '0')).join('');
+        
+        // Expires in 1 hour
+        const expires = new Date();
+        expires.setHours(expires.getHours() + 1);
+        const expiresStr = expires.toISOString();
+
+        // Update database
+        if (userType === 'doctor') {
+            await connection.query(
+                'UPDATE doctors SET reset_token = ?, reset_token_expires = ? WHERE doctor_id = ?',
+                [token, expiresStr, user.doctor_id]
+            );
+        } else {
+            await connection.query(
+                'UPDATE staff SET reset_token = ?, reset_token_expires = ? WHERE staff_id = ?',
+                [token, expiresStr, user.staff_id]
+            );
+        }
+
+        connection.release();
+
+        // Send email
+        const frontendUrl = req.env && req.env.FRONTEND_URL ? req.env.FRONTEND_URL : 'https://clinic-frontend-c0g.pages.dev';
+        const resetLink = `${frontendUrl}/reset-password?token=${token}&email=${email}`;
+        
+        const apiKey = req.env && req.env.RESEND_API_KEY;
+        if (apiKey) {
+            await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from: 'Suma Clinic <onboarding@resend.dev>',
+                    to: email,
+                    subject: 'Password Reset Request - Suma Clinic',
+                    html: `<p>You requested a password reset. Click the link below to reset your password:</p>
+                           <p><a href="${resetLink}">${resetLink}</a></p>
+                           <p>This link will expire in 1 hour.</p>`
+                }),
+            });
+        } else {
+            console.log(`[PASS_RESET_MOCK_EMAIL] Sent to ${email}. Reset Link: ${resetLink}`);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'If the email exists, a password reset link has been sent.'
+        });
+
+    } catch (error) {
+        console.error('ForgotPassword error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'An error occurred during password reset request.'
+        });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        const { email, token, newPassword } = req.body;
+
+        if (!email || !token || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email, token, and new password are required'
+            });
+        }
+
+        const connection = await pool.getConnection();
+        let user = null;
+        let userType = null;
+
+        // Check doctors table
+        const [doctors] = await connection.query(
+            'SELECT * FROM doctors WHERE email = ? AND reset_token = ? AND is_active = ?',
+            [email, token, true]
+        );
+
+        if (doctors.length > 0) {
+            user = doctors[0];
+            userType = 'doctor';
+        } else {
+            // Check staff table
+            const [staffList] = await connection.query(
+                'SELECT * FROM staff WHERE email = ? AND reset_token = ? AND is_active = ?',
+                [email, token, true]
+            );
+
+            if (staffList.length > 0) {
+                user = staffList[0];
+                userType = 'staff';
+            }
+        }
+
+        if (!user) {
+            connection.release();
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid email or reset token.'
+            });
+        }
+
+        // Check expiration
+        const now = new Date();
+        const expires = new Date(user.reset_token_expires);
+        if (now > expires) {
+            connection.release();
+            return res.status(400).json({
+                success: false,
+                message: 'Reset token has expired.'
+            });
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update password and clear token
+        if (userType === 'doctor') {
+            await connection.query(
+                'UPDATE doctors SET password = ?, reset_token = NULL, reset_token_expires = NULL WHERE doctor_id = ?',
+                [hashedPassword, user.doctor_id]
+            );
+        } else {
+            await connection.query(
+                'UPDATE staff SET password = ?, reset_token = NULL, reset_token_expires = NULL WHERE staff_id = ?',
+                [hashedPassword, user.staff_id]
+            );
+        }
+
+        connection.release();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Password reset successful. You may now log in with your new password.'
+        });
+
+    } catch (error) {
+        console.error('ResetPassword error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'An error occurred during password reset.'
+        });
+    }
+};
+
 module.exports = {
     loginUser,
-    registerUser
+    registerUser,
+    forgotPassword,
+    resetPassword
 };

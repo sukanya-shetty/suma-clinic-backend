@@ -89,6 +89,7 @@ const makeHandler = (expressHandler) => {
         authorization: c.req.header('authorization'),
       },
       user: c.get('user') || null,
+      env: c.env || {},
     };
 
     let responseStatus = 200;
@@ -131,6 +132,8 @@ app.get('/api/', (c) => c.json({ success: true, message: 'Clinic API is running!
 // 1. Auth routes
 app.post('/api/auth/login', makeHandler(authController.loginUser));
 app.post('/api/auth/register', makeHandler(authController.registerUser));
+app.post('/api/auth/forgot-password', makeHandler(authController.forgotPassword));
+app.post('/api/auth/reset-password', makeHandler(authController.resetPassword));
 
 // 2. Staff routes
 app.post('/api/staff/add-staff', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(staffController.addStaff));

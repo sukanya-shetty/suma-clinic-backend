@@ -31,7 +31,9 @@ CREATE TABLE doctors (
   phone_number TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  is_active INTEGER DEFAULT 1
+  is_active INTEGER DEFAULT 1,
+  reset_token TEXT,
+  reset_token_expires TEXT
 );
 
 CREATE TABLE staff (
@@ -42,7 +44,9 @@ CREATE TABLE staff (
   password TEXT NOT NULL,
   role TEXT CHECK(role IN ('Pharmacist', 'Receptionist', 'Nurse')) NOT NULL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  is_active INTEGER DEFAULT 1
+  is_active INTEGER DEFAULT 1,
+  reset_token TEXT,
+  reset_token_expires TEXT
 );
 
 CREATE TABLE patients (
