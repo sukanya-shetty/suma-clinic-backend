@@ -1,6 +1,6 @@
 -- ============================================================
 -- SUMA CLINIC CLOUDFLARE D1 / SQLITE COMPATIBLE MIGRATION BACKUP
--- Generated on: 2026-06-20T13:49:41.747Z
+-- Generated on: 2026-06-22T03:35:36.471Z
 -- ============================================================
 
 PRAGMA foreign_keys = OFF;
@@ -233,6 +233,7 @@ BEGIN
   WHERE expiry_id = NEW.expiry_id;
 END;
 
+
 -- ============================================================
 -- DATA INSERTION (DML)
 -- ============================================================
@@ -259,6 +260,8 @@ INSERT INTO `patients` (`patient_id`, `patient_name`, `phone_number`, `age`, `ge
 INSERT INTO `patients` (`patient_id`, `patient_name`, `phone_number`, `age`, `gender`, `address`, `registration_date`, `is_active`) VALUES (13, 'Jane Doe Test', '9000015293', 29, 'Female', '456 Verification Road', '2026-06-18 14:40:58', 1);
 INSERT INTO `patients` (`patient_id`, `patient_name`, `phone_number`, `age`, `gender`, `address`, `registration_date`, `is_active`) VALUES (14, 'Jane Doe Test', '9000087309', 29, 'Female', '456 Verification Road', '2026-06-18 14:55:17', 1);
 INSERT INTO `patients` (`patient_id`, `patient_name`, `phone_number`, `age`, `gender`, `address`, `registration_date`, `is_active`) VALUES (15, 'john', '9900637290', 45, 'Male', 'udupi', '2026-06-19 14:21:58', 1);
+INSERT INTO `patients` (`patient_id`, `patient_name`, `phone_number`, `age`, `gender`, `address`, `registration_date`, `is_active`) VALUES (16, 'Jane Doe Test', '9000087024', 29, 'Female', '456 Verification Road', '2026-06-21 13:14:54', 1);
+INSERT INTO `patients` (`patient_id`, `patient_name`, `phone_number`, `age`, `gender`, `address`, `registration_date`, `is_active`) VALUES (17, 'Jane Doe Test', '9000029759', 29, 'Female', '456 Verification Road', '2026-06-21 13:18:15', 1);
 
 -- Table: visits
 INSERT INTO `visits` (`visit_id`, `doctor_id`, `patient_id`, `visit_date`, `diagnosis`, `blood_pressure`, `temperature`, `notes`, `created_at`) VALUES (1, 1, 1, '2026-05-28 10:30:00', 'Updated: Common cold with mild fever - patient improving', '120/80', 98.4, 'Prescribed rest and fluids', '2026-05-28 23:14:10');
@@ -280,12 +283,14 @@ INSERT INTO `visits` (`visit_id`, `doctor_id`, `patient_id`, `visit_date`, `diag
 INSERT INTO `visits` (`visit_id`, `doctor_id`, `patient_id`, `visit_date`, `diagnosis`, `blood_pressure`, `temperature`, `notes`, `created_at`) VALUES (19, 1, 1, '2026-06-19 09:25:31', 'General Visit', 'N/A', 98.6, 'Blood Sugar: - | Notes: None', '2026-06-19 09:25:31');
 INSERT INTO `visits` (`visit_id`, `doctor_id`, `patient_id`, `visit_date`, `diagnosis`, `blood_pressure`, `temperature`, `notes`, `created_at`) VALUES (20, 1, 15, '2026-06-19 14:23:39', 'common cold', 'N/A', 98.6, 'Blood Sugar: - | Notes: None', '2026-06-19 14:23:39');
 INSERT INTO `visits` (`visit_id`, `doctor_id`, `patient_id`, `visit_date`, `diagnosis`, `blood_pressure`, `temperature`, `notes`, `created_at`) VALUES (21, 1, 9, '2026-06-19 14:26:25', 'General Visit', 'N/A', 98.6, 'Blood Sugar: - | Notes: None', '2026-06-19 14:26:25');
+INSERT INTO `visits` (`visit_id`, `doctor_id`, `patient_id`, `visit_date`, `diagnosis`, `blood_pressure`, `temperature`, `notes`, `created_at`) VALUES (22, 1, 16, '2026-06-21 07:44:54', 'Verification check-up', '120/80', 98.6, 'Everything is in perfect working order.', '2026-06-21 13:14:54');
+INSERT INTO `visits` (`visit_id`, `doctor_id`, `patient_id`, `visit_date`, `diagnosis`, `blood_pressure`, `temperature`, `notes`, `created_at`) VALUES (23, 1, 17, '2026-06-21 07:48:15', 'Verification check-up', '120/80', 98.6, 'Everything is in perfect working order.', '2026-06-21 13:18:15');
 
 -- Table: medicines
-INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (1, 'aspirin', 5, 50, '2027-12-31', NULL, NULL, NULL, NULL, '2026-05-19 23:13:21', '2026-06-19 14:26:25');
-INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (5, 'metformin', 75, 1.5, '2027-12-31', NULL, NULL, NULL, NULL, '2026-06-10 23:32:50', '2026-06-18 15:27:52');
-INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (6, 'Paracetamol', 79, 2, '2027-12-31', NULL, NULL, NULL, NULL, '2026-06-11 22:15:32', '2026-06-19 14:28:06');
-INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (14, 'dolo 650', 70, 1, '2026-06-27', NULL, NULL, NULL, NULL, '2026-06-19 09:24:36', '2026-06-19 09:25:31');
+INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (1, 'aspirin', 41, 50, '2027-12-31 00:00:00', NULL, NULL, NULL, NULL, '2026-05-19 23:13:21', '2026-06-21 13:18:15');
+INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (5, 'metformin', 75, 1.5, '2027-12-31 00:00:00', NULL, NULL, NULL, NULL, '2026-06-10 23:32:50', '2026-06-18 15:27:52');
+INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (6, 'Paracetamol', 79, 2, '2027-12-31 00:00:00', NULL, NULL, NULL, NULL, '2026-06-11 22:15:32', '2026-06-19 14:28:06');
+INSERT INTO `medicines` (`medicine_id`, `medicine_name`, `quantity`, `price`, `expiry_date`, `batch_number`, `purchase_date`, `supplier_name`, `purchase_price`, `created_at`, `updated_at`) VALUES (14, 'dolo 650', 70, 1, '2026-06-27 00:00:00', NULL, NULL, NULL, NULL, '2026-06-19 09:24:36', '2026-06-19 09:25:31');
 
 -- Table: alerts
 INSERT INTO `alerts` (`alert_id`, `medicine_id`, `alert_type`, `message`, `is_read`, `created_at`) VALUES (1, 1, 'LOW_STOCK', 'aspirin stock low: 9 tablets remaining', 0, '2026-05-19 23:16:16');
@@ -315,13 +320,16 @@ INSERT INTO `prescriptions` (`prescription_id`, `visit_id`, `medicine_id`, `dosa
 INSERT INTO `prescriptions` (`prescription_id`, `visit_id`, `medicine_id`, `dosage`, `quantity`, `duration_days`, `created_at`) VALUES (20, 19, 14, '1-0-½', 30, 30, '2026-06-19 09:25:31');
 INSERT INTO `prescriptions` (`prescription_id`, `visit_id`, `medicine_id`, `dosage`, `quantity`, `duration_days`, `created_at`) VALUES (21, 20, 1, '1-0-1', 10, 6, '2026-06-19 14:23:39');
 INSERT INTO `prescriptions` (`prescription_id`, `visit_id`, `medicine_id`, `dosage`, `quantity`, `duration_days`, `created_at`) VALUES (22, 21, 1, '1-0-0', 10, 5, '2026-06-19 14:26:25');
+INSERT INTO `prescriptions` (`prescription_id`, `visit_id`, `medicine_id`, `dosage`, `quantity`, `duration_days`, `created_at`) VALUES (23, 22, 1, '500mg daily', 5, 5, '2026-06-21 13:14:54');
+INSERT INTO `prescriptions` (`prescription_id`, `visit_id`, `medicine_id`, `dosage`, `quantity`, `duration_days`, `created_at`) VALUES (24, 23, 1, '500mg daily', 5, 5, '2026-06-21 13:18:15');
 
 -- Table: sales
 INSERT INTO `sales` (`sale_id`, `patient_id`, `medicine_name`, `quantity_sold`, `price_per_unit`, `total_amount`, `sale_type`, `sale_date`, `created_by`) VALUES (1, NULL, 'metformin', 10, 1.5, 15, 'Direct Walk-in', '2026-06-18 15:27:52', 1);
 INSERT INTO `sales` (`sale_id`, `patient_id`, `medicine_name`, `quantity_sold`, `price_per_unit`, `total_amount`, `sale_type`, `sale_date`, `created_by`) VALUES (2, NULL, 'Paracetamol', 1, 2, 2, 'Direct Walk-in', '2026-06-19 14:27:48', 1);
 INSERT INTO `sales` (`sale_id`, `patient_id`, `medicine_name`, `quantity_sold`, `price_per_unit`, `total_amount`, `sale_type`, `sale_date`, `created_by`) VALUES (3, NULL, 'Paracetamol', 10, 2, 20, 'Direct Walk-in', '2026-06-19 14:28:06', 1);
 
--- Table expiry_tracking is empty
+-- Table: expiry_tracking
+-- (No rows in expiry_tracking)
 
 -- Table: audit_log
 INSERT INTO `audit_log` (`log_id`, `doctor_id`, `action`, `table_name`, `record_id`, `old_value`, `new_value`, `created_at`) VALUES (1, 1, 'PRESCRIPTION_UPDATED', 'prescriptions', 4, '{"prescription_id":4,"medicine_id":1,"quantity":3}', '{"prescription_id":4,"visit_id":1,"medicine_id":1,"dosage":"250mg once daily","quantity":3,"duration_days":7}', '2026-06-07 11:07:56');
@@ -343,5 +351,7 @@ INSERT INTO `audit_log` (`log_id`, `doctor_id`, `action`, `table_name`, `record_
 INSERT INTO `audit_log` (`log_id`, `doctor_id`, `action`, `table_name`, `record_id`, `old_value`, `new_value`, `created_at`) VALUES (17, 1, 'PRESCRIPTION_CREATED', 'prescriptions', 20, NULL, '{"prescription_id":20,"visit_id":19,"medicine_id":14,"dosage":"1-0-½","quantity":30,"duration_days":30}', '2026-06-19 09:25:31');
 INSERT INTO `audit_log` (`log_id`, `doctor_id`, `action`, `table_name`, `record_id`, `old_value`, `new_value`, `created_at`) VALUES (18, 1, 'PRESCRIPTION_CREATED', 'prescriptions', 21, NULL, '{"prescription_id":21,"visit_id":20,"medicine_id":1,"dosage":"1-0-1","quantity":10,"duration_days":6}', '2026-06-19 14:23:39');
 INSERT INTO `audit_log` (`log_id`, `doctor_id`, `action`, `table_name`, `record_id`, `old_value`, `new_value`, `created_at`) VALUES (19, 1, 'PRESCRIPTION_CREATED', 'prescriptions', 22, NULL, '{"prescription_id":22,"visit_id":21,"medicine_id":1,"dosage":"1-0-0","quantity":10,"duration_days":5}', '2026-06-19 14:26:25');
+INSERT INTO `audit_log` (`log_id`, `doctor_id`, `action`, `table_name`, `record_id`, `old_value`, `new_value`, `created_at`) VALUES (20, 1, 'PRESCRIPTION_CREATED', 'prescriptions', 23, NULL, '{"prescription_id":23,"visit_id":22,"medicine_id":1,"dosage":"500mg daily","quantity":5,"duration_days":5}', '2026-06-21 13:14:54');
+INSERT INTO `audit_log` (`log_id`, `doctor_id`, `action`, `table_name`, `record_id`, `old_value`, `new_value`, `created_at`) VALUES (21, 1, 'PRESCRIPTION_CREATED', 'prescriptions', 24, NULL, '{"prescription_id":24,"visit_id":23,"medicine_id":1,"dosage":"500mg daily","quantity":5,"duration_days":5}', '2026-06-21 13:18:15');
 
-PRAGMA foreign_keys = ON; 
+PRAGMA foreign_keys = ON;
