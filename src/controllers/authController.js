@@ -202,38 +202,50 @@ const forgotPassword = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Email is required' });
         }
 
-        const connection = await pool.getConnection();
-        let user = null;
-        let userType = null;
-
-        // Check doctors table
-        const [doctors] = await connection.query(
-            'SELECT * FROM doctors WHERE email = ? AND is_active = ?',
-            [email, true]
-        );
-
-        if (doctors.length > 0) {
-            user = doctors[0];
-            userType = 'doctor';
-        } else {
-            // Check staff table
-            const [staffList] = await connection.query(
-                'SELECT * FROM staff WHERE email = ? AND is_active = ?',
-                [email, true]
-            );
-
-            if (staffList.length > 0) {
-                user = staffList[0];
-                userType = 'staff';
-            }
+        // REQUIREMENT: Only allow abhinavashetty50@gmail.com
+        const targetEmail = 'abhinavashetty50@gmail.com';
+        if (email.toLowerCase().trim() !== targetEmail) {
+            return res.status(403).json({
+                success: false,
+                message: 'Password reset is only allowed for the administrator account.'
+            });
         }
 
-        if (!user) {
+        const connection = await pool.getConnection();
+
+        // Fetch doctor
+        const [doctors] = await connection.query(
+            'SELECT * FROM doctors WHERE email = ? AND is_active = ?',
+            [targetEmail, true]
+        );
+
+        if (doctors.length === 0) {
             connection.release();
-            return res.status(200).json({
-                success: true,
-                message: 'If the email exists, a password reset link has been sent.'
+            return res.status(404).json({
+                success: false,
+                message: 'Administrator account not found.'
             });
+        }
+
+        const user = doctors[0];
+
+        // REQUIREMENT: Daily limit of 5 attempts
+        const todayStr = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        let attempts = user.reset_attempts_count || 0;
+        const lastAttemptDate = user.last_reset_attempt_date;
+
+        if (lastAttemptDate === todayStr) {
+            if (attempts >= 5) {
+                connection.release();
+                return res.status(429).json({
+                    success: false,
+                    message: 'Daily limit of 5 password reset attempts exceeded. Try again tomorrow.'
+                });
+            }
+            attempts += 1;
+        } else {
+            // New day, reset attempts count
+            attempts = 1;
         }
 
         // Generate reset token using Web Crypto
@@ -247,17 +259,10 @@ const forgotPassword = async (req, res) => {
         const expiresStr = expires.toISOString();
 
         // Update database
-        if (userType === 'doctor') {
-            await connection.query(
-                'UPDATE doctors SET reset_token = ?, reset_token_expires = ? WHERE doctor_id = ?',
-                [token, expiresStr, user.doctor_id]
-            );
-        } else {
-            await connection.query(
-                'UPDATE staff SET reset_token = ?, reset_token_expires = ? WHERE staff_id = ?',
-                [token, expiresStr, user.staff_id]
-            );
-        }
+        await connection.query(
+            'UPDATE doctors SET reset_token = ?, reset_token_expires = ?, reset_attempts_count = ?, last_reset_attempt_date = ? WHERE doctor_id = ?',
+            [token, expiresStr, attempts, todayStr, user.doctor_id]
+        );
 
         connection.release();
 

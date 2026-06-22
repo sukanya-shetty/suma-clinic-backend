@@ -33,7 +33,9 @@ CREATE TABLE doctors (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   is_active INTEGER DEFAULT 1,
   reset_token TEXT,
-  reset_token_expires TEXT
+  reset_token_expires TEXT,
+  reset_attempts_count INTEGER DEFAULT 0,
+  last_reset_attempt_date TEXT
 );
 
 CREATE TABLE staff (
