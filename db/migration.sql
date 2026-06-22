@@ -242,7 +242,7 @@ END;
 -- DATA INSERTION (DML)
 -- ============================================================
 -- Table: doctors
-INSERT INTO `doctors` (`doctor_id`, `name`, `email`, `phone_number`, `password`, `created_at`, `is_active`) VALUES (1, 'Dr. Abhinava Shetty', 'dr.shetty@clinic.com', '9876543210', '$2b$10$ujYCNHxzuKuBCndsdbsp9Oa5xH5TPFd7MGXhKjSBDG9PXB5l0Nq4K', '2026-05-07 22:55:58', 1);
+INSERT INTO `doctors` (`doctor_id`, `name`, `email`, `phone_number`, `password`, `created_at`, `is_active`) VALUES (1, 'Dr. Abhinava Shetty', 'abhinavashetty50@gmail.com', '9876543210', '$2b$10$ujYCNHxzuKuBCndsdbsp9Oa5xH5TPFd7MGXhKjSBDG9PXB5l0Nq4K', '2026-05-07 22:55:58', 1);
 INSERT INTO `doctors` (`doctor_id`, `name`, `email`, `phone_number`, `password`, `created_at`, `is_active`) VALUES (2, 'Test Doctor', 'testdoc+local@clinic.test', '', '$2b$10$EQeV4TSLTRObPLBy3kW6/uxTLtyGLaoVyvWyGt39McCkGCjiQ3WJe', '2026-06-06 20:07:20', 1);
 
 -- Table: staff
