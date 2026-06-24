@@ -35,6 +35,10 @@ const { authMiddleware, authorizeRole } = require('../middleware/auth');
 router.post('/', authMiddleware, authorizeRole('Doctor'), prescriptionController.createPrescription);
 
 
+// GET /api/prescriptions/recent/all
+// Retrieve list of all pending prescriptions (Pharmacist queue)
+router.get('/recent/all', authMiddleware, prescriptionController.getPendingPrescriptions);
+
 // ============================================================================
 // ROUTE 2: Get All Prescriptions for a Specific Visit
 // GET /api/prescriptions/:visit_id

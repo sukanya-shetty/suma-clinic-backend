@@ -16,9 +16,7 @@ app.use('*', cors({
 
 // Global DB Binding Middleware
 app.use('*', async (c, next) => {
-  // Bind D1 to database config
   setDB(c.env.DB);
-  // Set JWT_SECRET in process.env for compatibility with controllers/middleware
   process.env.JWT_SECRET = c.env.JWT_SECRET || 'sumaclinic-secret-key-12345';
   process.env.JWT_EXPIRES_IN = c.env.JWT_EXPIRES_IN || '24h';
   await next();
@@ -47,17 +45,18 @@ const honoAuthMiddleware = async (c, next) => {
   }
 };
 
-// Role Authorization Middleware for Hono
-const honoAuthorizeRole = (requiredRole) => {
+// Role Authorization Middleware for Hono (allows passing multiple roles)
+const honoAuthorizeRole = (requiredRoles) => {
+  const roles = Array.isArray(requiredRoles) ? requiredRoles : [requiredRoles];
   return async (c, next) => {
     const user = c.get('user');
     if (!user) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
-    if (user.role === requiredRole || user.role === 'Doctor') {
+    if (roles.includes(user.role)) {
       await next();
     } else {
-      return c.json({ error: `Access denied. This action requires ${requiredRole} role` }, 403);
+      return c.json({ error: `Access denied. This action requires one of the following roles: ${roles.join(', ')}` }, 403);
     }
   };
 };
@@ -65,12 +64,10 @@ const honoAuthorizeRole = (requiredRole) => {
 // Express-to-Hono Handler Adapter Bridge
 const makeHandler = (expressHandler) => {
   return async (c) => {
-    // Re-verify DB and env are set for this context run
     setDB(c.env.DB);
     process.env.JWT_SECRET = c.env.JWT_SECRET || 'sumaclinic-secret-key-12345';
     process.env.JWT_EXPIRES_IN = c.env.JWT_EXPIRES_IN || '24h';
 
-    // Parse JSON body safely
     let body = {};
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
       try {
@@ -80,7 +77,6 @@ const makeHandler = (expressHandler) => {
       }
     }
 
-    // Build mock req and res
     const req = {
       body,
       query: c.req.query(),
@@ -133,43 +129,48 @@ app.post('/api/auth/login', makeHandler(authController.loginUser));
 app.post('/api/auth/register', makeHandler(authController.registerUser));
 
 // 2. Staff routes
-app.post('/api/staff/add-staff', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(staffController.addStaff));
-app.get('/api/staff/all', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(staffController.getAllStaff));
+app.get('/api/staff/doctors', honoAuthMiddleware, makeHandler(staffController.getActiveDoctors));
+app.post('/api/staff/add-staff', honoAuthMiddleware, honoAuthorizeRole('Admin'), makeHandler(staffController.addStaff));
+app.get('/api/staff/all', honoAuthMiddleware, honoAuthorizeRole('Admin'), makeHandler(staffController.getAllStaff));
+app.delete('/api/staff/:id', honoAuthMiddleware, honoAuthorizeRole('Admin'), makeHandler(staffController.deleteStaff));
 
 // 3. Inventory routes
-app.post('/api/inventory/medicines', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(inventoryController.addMedicine));
+app.post('/api/inventory/medicines', honoAuthMiddleware, honoAuthorizeRole('Admin'), makeHandler(inventoryController.addMedicine));
 app.get('/api/inventory/medicines', honoAuthMiddleware, makeHandler(inventoryController.getAllMedicines));
 app.put('/api/inventory/medicines/:id', honoAuthMiddleware, makeHandler(inventoryController.updateMedicineStock));
 app.get('/api/inventory/expiring', honoAuthMiddleware, makeHandler(inventoryController.getExpiringMedicines));
-app.delete('/api/inventory/medicines/:id', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(inventoryController.deleteMedicine));
+app.delete('/api/inventory/medicines/:id', honoAuthMiddleware, honoAuthorizeRole('Admin'), makeHandler(inventoryController.deleteMedicine));
 app.get('/api/inventory/alerts', honoAuthMiddleware, makeHandler(inventoryController.getAlerts));
 
 // 4. Patient routes
-app.post('/api/patients/register', honoAuthMiddleware, makeHandler(patientController.registerPatient));
+app.post('/api/patients/register', honoAuthMiddleware, honoAuthorizeRole(['Doctor']), makeHandler(patientController.registerPatient));
 app.get('/api/patients', honoAuthMiddleware, makeHandler(patientController.getAllPatients));
 app.get('/api/patients/search', honoAuthMiddleware, makeHandler(patientController.searchPatients));
 app.put('/api/patients/:id', honoAuthMiddleware, makeHandler(patientController.updatePatient));
-app.delete('/api/patients/:id', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(patientController.deletePatient));
+app.delete('/api/patients/:id', honoAuthMiddleware, honoAuthorizeRole(['Doctor']), makeHandler(patientController.deletePatient));
 app.get('/api/patients/:id/history', honoAuthMiddleware, makeHandler(patientController.getPatientHistory));
 
 // 5. Visit routes
-app.post('/api/visits', honoAuthMiddleware, makeHandler(visitController.createVisit));
+app.post('/api/visits', honoAuthMiddleware, honoAuthorizeRole(['Doctor']), makeHandler(visitController.createVisit));
 app.get('/api/visits/recent/all', honoAuthMiddleware, makeHandler(visitController.getRecentVisits));
 app.get('/api/visits/:patient_id', honoAuthMiddleware, makeHandler(visitController.getPatientVisits));
 app.put('/api/visits/:id', honoAuthMiddleware, makeHandler(visitController.updateVisit));
-app.delete('/api/visits/:id', honoAuthMiddleware, honoAuthorizeRole('Doctor'), makeHandler(visitController.deleteVisit));
-
+app.delete('/api/visits/:id', honoAuthMiddleware, honoAuthorizeRole(['Doctor']), makeHandler(visitController.deleteVisit));
 
 // 6. Prescription routes
-app.post('/api/prescriptions', honoAuthMiddleware, makeHandler(prescriptionController.createPrescription));
+app.post('/api/prescriptions', honoAuthMiddleware, honoAuthorizeRole(['Doctor']), makeHandler(prescriptionController.createPrescription));
+app.get('/api/prescriptions/recent/all', honoAuthMiddleware, makeHandler(prescriptionController.getPendingPrescriptions));
 app.get('/api/prescriptions/:visit_id', honoAuthMiddleware, makeHandler(prescriptionController.getPrescriptionsByVisit));
-app.put('/api/prescriptions/:id', honoAuthMiddleware, makeHandler(prescriptionController.updatePrescription));
-app.delete('/api/prescriptions/:id', honoAuthMiddleware, makeHandler(prescriptionController.deletePrescription));
+app.put('/api/prescriptions/:id', honoAuthMiddleware, honoAuthorizeRole(['Doctor']), makeHandler(prescriptionController.updatePrescription));
+app.delete('/api/prescriptions/:id', honoAuthMiddleware, honoAuthorizeRole(['Doctor']), makeHandler(prescriptionController.deletePrescription));
 
 // 7. Sales routes
-app.post('/api/sales', honoAuthMiddleware, makeHandler(salesController.createSale));
-app.get('/api/sales', honoAuthMiddleware, makeHandler(salesController.getAllSales));
-app.get('/api/sales/summary/daily', honoAuthMiddleware, makeHandler(salesController.getDailySalesSummary));
+app.post('/api/sales', honoAuthMiddleware, honoAuthorizeRole('Pharmacist'), makeHandler(salesController.createSale));
+app.post('/api/sales/dispense', honoAuthMiddleware, honoAuthorizeRole('Pharmacist'), makeHandler(salesController.dispensePrescription));
+app.get('/api/sales/bills', honoAuthMiddleware, honoAuthorizeRole(['Admin', 'Pharmacist']), makeHandler(salesController.getAllBills));
+app.get('/api/sales/bills/:id', honoAuthMiddleware, honoAuthorizeRole(['Admin', 'Pharmacist']), makeHandler(salesController.getBillDetails));
+app.get('/api/sales', honoAuthMiddleware, honoAuthorizeRole(['Admin', 'Pharmacist']), makeHandler(salesController.getAllSales));
+app.get('/api/sales/summary/daily', honoAuthMiddleware, honoAuthorizeRole(['Admin', 'Pharmacist']), makeHandler(salesController.getDailySalesSummary));
 
 // Base route
 app.get('/', (c) => c.text('Clinic API Cloudflare Worker running!'));

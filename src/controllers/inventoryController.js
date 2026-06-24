@@ -1,11 +1,14 @@
 const pool = require('../config/db');
 
 // ===== FUNCTION 1: addMedicine() =====
-// Purpose: Add new medicine or UPDATE existing (case-insensitive)
-// Input: { name, price, quantity, expiryDate }
-// Returns: 201 Created / 200 Updated / 400 Bad Request / 500 Error
+// Only Admin can add medicine/stock-in
 const addMedicine = async (req, res) => {
     try {
+        // Enforce Admin only on logic level
+        if (!req.user || req.user.role !== 'Admin') {
+            return res.status(403).json({ error: 'Access denied. Only Admin can add medicines or stock-in.' });
+        }
+
         const { name, price, quantity, expiryDate, batch_number, supplier_name, purchase_price } = req.body;
 
         // STEP 1: Validate all fields exist
@@ -14,61 +17,76 @@ const addMedicine = async (req, res) => {
         }
 
         // STEP 2: Validate price and quantity are positive numbers
-        if (price <= 0 || quantity <= 0) {
+        const parsedPrice = parseFloat(price);
+        const parsedQuantity = parseFloat(quantity);
+        if (isNaN(parsedPrice) || parsedPrice <= 0 || isNaN(parsedQuantity) || parsedQuantity <= 0) {
             return res.status(400).json({ error: 'Price and quantity must be positive numbers' });
         }
 
-        // STEP 3: Check if medicine already exists (CASE-INSENSITIVE using LOWER)
-        const [existingMedicine] = await pool.query(
-            'SELECT medicine_id, quantity FROM medicines WHERE LOWER(medicine_name) = LOWER(?)',
-            [name]
-        );
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
 
-        // STEP 4: If exists → UPDATE quantity and attributes
-        if (existingMedicine.length > 0) {
-            const existingId = existingMedicine[0].medicine_id;
-            const oldQuantity = existingMedicine[0].quantity;
-            const newQuantity = oldQuantity + parseInt(quantity);
-
-            await pool.query(
-                `UPDATE medicines 
-                 SET quantity = ?, price = ?, batch_number = COALESCE(?, batch_number), 
-                     supplier_name = COALESCE(?, supplier_name), purchase_price = COALESCE(?, purchase_price) 
-                 WHERE medicine_id = ?`,
-                [newQuantity, price, batch_number || null, supplier_name || null, purchase_price || null, existingId]
+        try {
+            // STEP 3: Check if medicine already exists (CASE-INSENSITIVE)
+            const [existingMedicine] = await connection.query(
+                'SELECT medicine_id, quantity FROM medicines WHERE LOWER(medicine_name) = LOWER(?)',
+                [name.trim()]
             );
 
-            return res.status(200).json({
-                message: 'Medicine updated',
+            let medicineId = null;
+            let finalQuantity = parsedQuantity;
+            let actionType = 'CREATED';
+
+            // STEP 4: If exists → UPDATE quantity and attributes
+            if (existingMedicine.length > 0) {
+                medicineId = existingMedicine[0].medicine_id;
+                const oldQuantity = existingMedicine[0].quantity;
+                finalQuantity = oldQuantity + parsedQuantity;
+                actionType = 'UPDATED';
+
+                await connection.query(
+                    `UPDATE medicines 
+                     SET quantity = ?, price = ?, expiry_date = ?, batch_number = COALESCE(?, batch_number), 
+                         supplier_name = COALESCE(?, supplier_name), purchase_price = COALESCE(?, purchase_price) 
+                     WHERE medicine_id = ?`,
+                    [finalQuantity, parsedPrice, expiryDate, batch_number || null, supplier_name || null, purchase_price || null, medicineId]
+                );
+            } else {
+                // STEP 5: If NOT exists → INSERT new medicine
+                const [result] = await connection.query(
+                    `INSERT INTO medicines (medicine_name, price, quantity, expiry_date, batch_number, supplier_name, purchase_price) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [name.trim(), parsedPrice, parsedQuantity, expiryDate, batch_number || null, supplier_name || null, purchase_price || null]
+                );
+                medicineId = result.insertId;
+            }
+
+            // STEP 6: Write to inventory_transactions (audit log for stock-in)
+            await connection.query(
+                'INSERT INTO inventory_transactions (medicine_id, type, quantity, performed_by) VALUES (?, ?, ?, ?)',
+                [medicineId, 'stock_in', parsedQuantity, req.user.id]
+            );
+
+            await connection.commit();
+            connection.release();
+
+            return res.status(actionType === 'CREATED' ? 201 : 200).json({
+                message: actionType === 'CREATED' ? 'Medicine added successfully' : 'Medicine stock updated successfully',
                 medicine: {
-                    id: existingId,
+                    id: medicineId,
                     name: name,
-                    price: price,
-                    quantity: newQuantity,
+                    price: parsedPrice,
+                    quantity: finalQuantity,
                     expiryDate: expiryDate,
-                    action: 'UPDATED'
+                    action: actionType
                 }
             });
+
+        } catch (txErr) {
+            await connection.rollback();
+            connection.release();
+            throw txErr;
         }
-
-        // STEP 5: If NOT exists → INSERT new medicine (store name as LOWERCASE)
-        const [result] = await pool.query(
-            `INSERT INTO medicines (medicine_name, price, quantity, expiry_date, batch_number, supplier_name, purchase_price) 
-             VALUES (LOWER(?), ?, ?, ?, ?, ?, ?)`,
-            [name, price, quantity, expiryDate, batch_number || null, supplier_name || null, purchase_price || null]
-        );
-
-        return res.status(201).json({
-            message: 'Medicine added successfully',
-            medicine: {
-                id: result.insertId,
-                name: name,
-                price: price,
-                quantity: quantity,
-                expiryDate: expiryDate,
-                action: 'CREATED'
-            }
-        });
 
     } catch (error) {
         console.error('Error in addMedicine:', error);
@@ -76,18 +94,13 @@ const addMedicine = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 2: getAllMedicines() =====
-// Purpose: Get all medicines from inventory
-// Returns: 200 OK with array / 500 Error
 const getAllMedicines = async (req, res) => {
     try {
-        // STEP 1: Query all medicines
         const [medicines] = await pool.query(
-            'SELECT medicine_id, medicine_name, price, quantity, expiry_date FROM medicines'
+            'SELECT medicine_id, medicine_name, price, quantity, expiry_date, batch_number, supplier_name, purchase_price FROM medicines'
         );
 
-        // STEP 2: Return all medicines
         return res.status(200).json({
             message: 'Medicines retrieved successfully',
             total: medicines.length,
@@ -100,107 +113,23 @@ const getAllMedicines = async (req, res) => {
     }
 };
 
-
-// ===== FUNCTION 3: updateMedicineStock() =====
-// Purpose: Reduce stock when medicine is sold
-// Input: { medicineId, quantitySold }
-// Returns: 200 OK with alert info / 400 Bad Request / 404 Not Found / 500 Error
+// ===== FUNCTION 3: updateMedicineStock() (Deprecated / Restricted to internal calls) =====
 const updateMedicineStock = async (req, res) => {
-    try {
-        const medicineId = req.params.id || req.body.medicineId;
-        const { quantitySold } = req.body;
-
-        // STEP 1: Validate fields
-        if (!medicineId || !quantitySold) {
-            return res.status(400).json({ error: 'medicineId and quantitySold required' });
-        }
-
-        if (quantitySold <= 0) {
-            return res.status(400).json({ error: 'Quantity sold must be positive' });
-        }
-
-        // STEP 2: Get current medicine details
-        const [medicineData] = await pool.query(
-            'SELECT medicine_id, medicine_name, quantity FROM medicines WHERE medicine_id = ?',
-            [medicineId]
-        );
-
-        // STEP 3: Check if medicine exists
-        if (medicineData.length === 0) {
-            return res.status(404).json({ error: 'Medicine not found' });
-        }
-
-        const currentQuantity = medicineData[0].quantity;
-        const medicineName = medicineData[0].medicine_name;
-
-        // STEP 4: Check if sufficient stock
-        if (currentQuantity < quantitySold) {
-            return res.status(400).json({
-                error: `Insufficient stock. Available: ${currentQuantity}, Requested: ${quantitySold}`
-            });
-        }
-
-        // STEP 5: Calculate new quantity
-        const newQuantity = currentQuantity - quantitySold;
-
-        // STEP 6: Update quantity in database
-        await pool.query(
-            'UPDATE medicines SET quantity = ? WHERE medicine_id = ?',
-            [newQuantity, medicineId]
-        );
-
-        // STEP 7: Check if stock is below threshold (10) → Create alert
-        let alertCreated = null;
-        if (newQuantity < 10) {
-            const alertMessage = `${medicineName} stock low: ${newQuantity} tablets remaining`;
-            
-            await pool.query(
-                'INSERT INTO alerts (medicine_id, alert_type, message) VALUES (?, ?, ?)',
-                [medicineId, 'LOW_STOCK', alertMessage]
-            );
-
-            alertCreated = {
-                type: 'LOW_STOCK',
-                message: alertMessage,
-                currentStock: newQuantity
-            };
-        }
-
-        // STEP 8: Return response with alert info
-        return res.status(200).json({
-            message: 'Stock updated successfully',
-            stock: {
-                medicineId: medicineId,
-                medicineName: medicineName,
-                quantitySold: quantitySold,
-                oldQuantity: currentQuantity,
-                newQuantity: newQuantity
-            },
-            alert: alertCreated
-        });
-
-    } catch (error) {
-        console.error('Error in updateMedicineStock:', error);
-        return res.status(500).json({ error: 'Database error while updating stock' });
-    }
+    return res.status(403).json({ error: 'Direct manual stock update is not allowed. Stock changes must go through Admin Stock-In or Pharmacist Dispensing.' });
 };
 
-
 // ===== FUNCTION 4: getExpiringMedicines() =====
-// Purpose: Get medicines expiring within 30 days
-// Returns: 200 OK with array / 500 Error
 const getExpiringMedicines = async (req, res) => {
     try {
-        // STEP 1: Query medicines where expiry date < 30 days from now
         const targetDate = new Date();
         targetDate.setDate(targetDate.getDate() + 30);
-        const targetDateString = targetDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
+        const targetDateString = targetDate.toISOString().slice(0, 10);
+        
         const [expiringMedicines] = await pool.query(
             "SELECT medicine_id, medicine_name, quantity, expiry_date FROM medicines WHERE expiry_date < ? ORDER BY expiry_date ASC",
             [targetDateString]
         );
 
-        // STEP 2: Return results
         return res.status(200).json({
             message: 'Expiring medicines retrieved',
             total: expiringMedicines.length,
@@ -213,21 +142,20 @@ const getExpiringMedicines = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 5: deleteMedicine() =====
-// Purpose: Remove medicine from inventory
-// Input: { medicineId }
-// Returns: 200 OK / 404 Not Found / 500 Error
 const deleteMedicine = async (req, res) => {
     try {
-        const medicineId = req.params.id || req.body.medicineId;
+        // Enforce Admin only
+        if (!req.user || req.user.role !== 'Admin') {
+            return res.status(403).json({ error: 'Access denied. Only Admin can delete medicines.' });
+        }
 
-        // STEP 1: Validate field
+        const medicineId = req.params.id;
+
         if (!medicineId) {
             return res.status(400).json({ error: 'medicineId required' });
         }
 
-        // STEP 2: Check if medicine exists
         const [medicineData] = await pool.query(
             'SELECT medicine_name FROM medicines WHERE medicine_id = ?',
             [medicineId]
@@ -239,13 +167,11 @@ const deleteMedicine = async (req, res) => {
 
         const medicineName = medicineData[0].medicine_name;
 
-        // STEP 3: Delete medicine (CASCADE will also delete related alerts)
         await pool.query(
             'DELETE FROM medicines WHERE medicine_id = ?',
             [medicineId]
         );
 
-        // STEP 4: Return success response
         return res.status(200).json({
             message: 'Medicine deleted successfully',
             medicine: {
@@ -260,18 +186,13 @@ const deleteMedicine = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 6: getAlerts() =====
-// Purpose: Get all unread alerts for dashboard
-// Returns: 200 OK with array / 500 Error
 const getAlerts = async (req, res) => {
     try {
-        // STEP 1: Query all unread alerts with medicine details
         const [alerts] = await pool.query(
             'SELECT a.alert_id, a.medicine_id, a.alert_type, a.message, a.is_read, a.created_at, m.medicine_name FROM alerts a JOIN medicines m ON a.medicine_id = m.medicine_id WHERE a.is_read = FALSE ORDER BY a.created_at DESC'
         );
 
-        // STEP 2: Return alerts
         return res.status(200).json({
             message: 'Alerts retrieved',
             total: alerts.length,
@@ -284,8 +205,6 @@ const getAlerts = async (req, res) => {
     }
 };
 
-
-// ===== EXPORT ALL FUNCTIONS =====
 module.exports = {
     addMedicine,
     getAllMedicines,

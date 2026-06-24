@@ -1,17 +1,15 @@
 const pool = require('../config/db');
 
 // ===== FUNCTION 1: registerPatient() =====
-// Purpose: Add new patient to clinic
-// Input: { name, phone, age, gender, address }
-// Phone can be NULL (optional) but if provided, must be UNIQUE
-// Returns: 201 Created / 400 Bad Request / 409 Conflict (duplicate phone)
 const registerPatient = async (req, res) => {
     try {
-        const { patient_name, phone_number, age, gender, address } = req.body;
+        const { patient_name, phone_number, age, gender, address, weight, assigned_doctor_id } = req.body;
 
         // STEP 1: Validate all required fields exist
-        if (!patient_name || !age || !gender) {
-            return res.status(400).json({ error: 'Required fields: patient_name, age, gender. Phone_number and address are optional.' });
+        if (!patient_name || !age || !gender || weight === undefined || !assigned_doctor_id) {
+            return res.status(400).json({ 
+                error: 'Required fields: patient_name, age, gender, weight, assigned_doctor_id. Phone_number and address are optional.' 
+            });
         }
 
         // STEP 2: Validate age is positive number
@@ -19,31 +17,52 @@ const registerPatient = async (req, res) => {
             return res.status(400).json({ error: 'Age must be a positive whole number' });
         }
 
-        // STEP 3: Validate gender is valid enum
+        // STEP 3: Validate weight
+        const parsedWeight = parseFloat(weight);
+        if (isNaN(parsedWeight) || parsedWeight <= 0) {
+            return res.status(400).json({ error: 'Weight must be a positive number' });
+        }
+
+        // STEP 4: Validate gender is valid enum
         const validGenders = ['Male', 'Female', 'Other'];
         if (!validGenders.includes(gender)) {
             return res.status(400).json({ error: 'Gender must be: Male, Female, or Other' });
         }
 
-        // STEP 4: If phone_number provided, check it's unique
+        const connection = await pool.getConnection();
+
+        // STEP 5: Validate assigned doctor exists and is indeed a Doctor
+        const [doctorCheck] = await connection.query(
+            "SELECT user_id FROM users WHERE user_id = ? AND role = 'doctor' AND is_active = ?",
+            [assigned_doctor_id, true]
+        );
+
+        if (doctorCheck.length === 0) {
+            connection.release();
+            return res.status(400).json({ error: 'Invalid or inactive assigned doctor selected.' });
+        }
+
+        // STEP 6: If phone_number provided, check it's unique
         if (phone_number) {
-            const [existingPhone] = await pool.query(
+            const [existingPhone] = await connection.query(
                 'SELECT patient_id FROM patients WHERE phone_number = ?',
                 [phone_number]
             );
 
             if (existingPhone.length > 0) {
+                connection.release();
                 return res.status(409).json({ error: 'Phone number already registered' });
             }
         }
 
-        // STEP 5: Insert new patient (phone_number can be NULL)
-        const [result] = await pool.query(
-            'INSERT INTO patients (patient_name, phone_number, age, gender, address) VALUES (?, ?, ?, ?, ?)',
-            [patient_name, phone_number || null, age, gender, address || null]
+        // STEP 7: Insert new patient
+        const [result] = await connection.query(
+            'INSERT INTO patients (patient_name, phone_number, age, gender, address, weight, assigned_doctor_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [patient_name, phone_number || null, age, gender, address || null, parsedWeight, assigned_doctor_id]
         );
 
-        // STEP 6: Return success
+        connection.release();
+
         return res.status(201).json({
             message: 'Patient registered successfully',
             patient: {
@@ -52,7 +71,9 @@ const registerPatient = async (req, res) => {
                 phone_number: phone_number || null,
                 age: age,
                 gender: gender,
-                address: address || null
+                address: address || null,
+                weight: parsedWeight,
+                assigned_doctor_id: assigned_doctor_id
             }
         });
 
@@ -62,18 +83,29 @@ const registerPatient = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 2: getAllPatients() =====
-// Purpose: Get all patients in clinic
-// Returns: 200 OK with array / 500 Error
 const getAllPatients = async (req, res) => {
     try {
-        // STEP 1: Query all patients
-        const [patients] = await pool.query(
-            'SELECT patient_id, patient_name, phone_number, age, gender, address, registration_date FROM patients ORDER BY registration_date DESC'
-        );
+        const isDoctor = req.user && req.user.role === 'Doctor';
+        let queryStr = `
+            SELECT p.patient_id, p.patient_name, p.phone_number, p.age, p.gender, 
+                   p.address, p.weight, p.assigned_doctor_id, p.registration_date,
+                   u.name as doctor_name, u.department as doctor_department
+            FROM patients p
+            LEFT JOIN users u ON p.assigned_doctor_id = u.user_id
+        `;
+        let queryParams = [];
 
-        // STEP 2: Return all patients
+        // Doctor can only view patients assigned to them
+        if (isDoctor) {
+            queryStr += ' WHERE p.assigned_doctor_id = ?';
+            queryParams.push(req.user.id);
+        }
+
+        queryStr += ' ORDER BY registration_date DESC';
+
+        const [patients] = await pool.query(queryStr, queryParams);
+
         return res.status(200).json({
             message: 'Patients retrieved successfully',
             total: patients.length,
@@ -86,39 +118,37 @@ const getAllPatients = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 3: searchPatients() =====
-// Purpose: Search patients by name or phone number
-// Query params: ?name=Rajesh OR ?phone=9876543210
-// Returns: 200 OK with matching patients / 400 Bad Request / 500 Error
 const searchPatients = async (req, res) => {
     try {
         const { name, phone } = req.query;
+        const isDoctor = req.user && req.user.role === 'Doctor';
 
-        // STEP 1: Validate at least one search parameter provided
         if (!name && !phone) {
             return res.status(400).json({ error: 'Provide either name or phone for search' });
         }
 
-        let query = 'SELECT patient_id, patient_name, phone_number, age, gender, address FROM patients WHERE 1=1';
+        let queryStr = 'SELECT patient_id, patient_name, phone_number, age, gender, address, weight, assigned_doctor_id FROM patients WHERE 1=1';
         const params = [];
 
-        // STEP 2: Search by name if provided
         if (name) {
-            query += ' AND patient_name LIKE ?';
-            params.push(`%${name}%`); // % allows partial match
+            queryStr += ' AND patient_name LIKE ?';
+            params.push(`%${name}%`);
         }
 
-        // STEP 3: Search by phone if provided
         if (phone) {
-            query += ' AND phone_number = ?';
+            queryStr += ' AND phone_number = ?';
             params.push(phone);
         }
 
-        // STEP 4: Execute search query
-        const [patients] = await pool.query(query, params);
+        // Doctor can only search among their assigned patients
+        if (isDoctor) {
+            queryStr += ' AND assigned_doctor_id = ?';
+            params.push(req.user.id);
+        }
 
-        // STEP 5: Return results
+        const [patients] = await pool.query(queryStr, params);
+
         return res.status(200).json({
             message: 'Search completed',
             total: patients.length,
@@ -131,32 +161,37 @@ const searchPatients = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 4: updatePatient() =====
-// Purpose: Update patient information by patient_id
-// Input: { name, phone_number, age, gender, address }
-// Returns: 200 OK / 400 Bad Request / 404 Not Found / 500 Error
 const updatePatient = async (req, res) => {
     try {
         const patientId = req.params.id;
-        const { name, phone_number, age, gender, address } = req.body;
+        const { name, phone_number, age, gender, address, weight, assigned_doctor_id } = req.body;
 
-        // STEP 1: Validate patient_id
         if (!patientId) {
             return res.status(400).json({ error: 'Patient ID required' });
         }
 
-        // STEP 2: Check if patient exists
-        const [existingPatient] = await pool.query(
-            'SELECT patient_id, patient_name FROM patients WHERE patient_id = ?',
+        // Doctor guard: Can only update if assigned to this doctor
+        const isDoctor = req.user && req.user.role === 'Doctor';
+        
+        const connection = await pool.getConnection();
+
+        // Check if patient exists
+        const [existingPatient] = await connection.query(
+            'SELECT patient_id, assigned_doctor_id FROM patients WHERE patient_id = ?',
             [patientId]
         );
 
         if (existingPatient.length === 0) {
+            connection.release();
             return res.status(404).json({ error: 'Patient not found' });
         }
 
-        // STEP 3: Build update query dynamically (only update provided fields)
+        if (isDoctor && existingPatient[0].assigned_doctor_id !== req.user.id) {
+            connection.release();
+            return res.status(403).json({ error: 'Access denied. You can only manage patients assigned to you.' });
+        }
+
         let updateFields = [];
         let updateValues = [];
 
@@ -164,61 +199,87 @@ const updatePatient = async (req, res) => {
             updateFields.push('patient_name = ?');
             updateValues.push(name);
         }
-        if (phone_number) {
-            // Validate phone_number is exactly 10 digits
-            if (!phone_number.match(/^\d{10}$/)) {
-                return res.status(400).json({ error: 'Phone number must be exactly 10 digits' });
+        if (phone_number !== undefined) {
+            if (phone_number) {
+                if (!phone_number.match(/^\d{10}$/)) {
+                    connection.release();
+                    return res.status(400).json({ error: 'Phone number must be exactly 10 digits' });
+                }
+                // Check uniqueness
+                const [phoneDuplicate] = await connection.query(
+                    'SELECT patient_id FROM patients WHERE phone_number = ? AND patient_id != ?',
+                    [phone_number, patientId]
+                );
+                if (phoneDuplicate.length > 0) {
+                    connection.release();
+                    return res.status(400).json({ error: 'Another patient is already registered with this phone number' });
+                }
+                updateFields.push('phone_number = ?');
+                updateValues.push(phone_number);
+            } else {
+                updateFields.push('phone_number = NULL');
             }
-            // Check uniqueness
-            const [phoneDuplicate] = await pool.query(
-                'SELECT patient_id FROM patients WHERE phone_number = ? AND patient_id != ?',
-                [phone_number, patientId]
-            );
-            if (phoneDuplicate.length > 0) {
-                return res.status(400).json({ error: 'Another patient is already registered with this phone number' });
-            }
-            updateFields.push('phone_number = ?');
-            updateValues.push(phone_number);
         }
         if (age) {
-            // Validate age
             if (age <= 0 || !Number.isInteger(age)) {
+                connection.release();
                 return res.status(400).json({ error: 'Age must be a positive whole number' });
             }
             updateFields.push('age = ?');
             updateValues.push(age);
         }
         if (gender) {
-            // Validate gender
             const validGenders = ['Male', 'Female', 'Other'];
             if (!validGenders.includes(gender)) {
+                connection.release();
                 return res.status(400).json({ error: 'Gender must be: Male, Female, or Other' });
             }
             updateFields.push('gender = ?');
             updateValues.push(gender);
         }
-        if (address) {
+        if (address !== undefined) {
             updateFields.push('address = ?');
-            updateValues.push(address);
+            updateValues.push(address || null);
+        }
+        if (weight !== undefined) {
+            const parsedWeight = parseFloat(weight);
+            if (isNaN(parsedWeight) || parsedWeight <= 0) {
+                connection.release();
+                return res.status(400).json({ error: 'Weight must be a positive number' });
+            }
+            updateFields.push('weight = ?');
+            updateValues.push(parsedWeight);
+        }
+        if (assigned_doctor_id) {
+            // Validate assigned doctor
+            const [doctorCheck] = await connection.query(
+                "SELECT user_id FROM users WHERE user_id = ? AND role = 'doctor' AND is_active = ?",
+                [assigned_doctor_id, true]
+            );
+            if (doctorCheck.length === 0) {
+                connection.release();
+                return res.status(400).json({ error: 'Invalid or inactive assigned doctor selected.' });
+            }
+            updateFields.push('assigned_doctor_id = ?');
+            updateValues.push(assigned_doctor_id);
         }
 
-        // STEP 4: If no fields to update, return error
         if (updateFields.length === 0) {
-            return res.status(400).json({ error: 'No fields to update. Provide name, phone_number, age, gender, or address.' });
+            connection.release();
+            return res.status(400).json({ error: 'No fields to update.' });
         }
 
-        // STEP 5: Add patient_id to query parameters
         updateValues.push(patientId);
 
-        // STEP 6: Execute update
         const query = `UPDATE patients SET ${updateFields.join(', ')} WHERE patient_id = ?`;
-        await pool.query(query, updateValues);
+        await connection.query(query, updateValues);
 
-        // STEP 7: Fetch updated patient and return
-        const [updatedPatient] = await pool.query(
-            'SELECT patient_id, patient_name, phone_number, age, gender, address FROM patients WHERE patient_id = ?',
+        const [updatedPatient] = await connection.query(
+            'SELECT patient_id, patient_name, phone_number, age, gender, address, weight, assigned_doctor_id FROM patients WHERE patient_id = ?',
             [patientId]
         );
+
+        connection.release();
 
         return res.status(200).json({
             message: 'Patient updated successfully',
@@ -231,40 +292,43 @@ const updatePatient = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 5: deletePatient() =====
-// Purpose: Delete patient from system
-// Input: patient_id
-// Note: Cascading delete will remove visits and prescriptions
-// Returns: 200 OK / 404 Not Found / 500 Error
 const deletePatient = async (req, res) => {
     try {
         const patientId = req.params.id;
 
-        // STEP 1: Validate patient_id
         if (!patientId) {
             return res.status(400).json({ error: 'Patient ID required' });
         }
 
-        // STEP 2: Check if patient exists
-        const [existingPatient] = await pool.query(
-            'SELECT patient_id, patient_name FROM patients WHERE patient_id = ?',
+        const isDoctor = req.user && req.user.role === 'Doctor';
+
+        const connection = await pool.getConnection();
+
+        const [existingPatient] = await connection.query(
+            'SELECT patient_id, patient_name, assigned_doctor_id FROM patients WHERE patient_id = ?',
             [patientId]
         );
 
         if (existingPatient.length === 0) {
+            connection.release();
             return res.status(404).json({ error: 'Patient not found' });
+        }
+
+        if (isDoctor && existingPatient[0].assigned_doctor_id !== req.user.id) {
+            connection.release();
+            return res.status(403).json({ error: 'Access denied. You can only delete patients assigned to you.' });
         }
 
         const patientName = existingPatient[0].patient_name;
 
-        // STEP 3: Delete patient (CASCADE will delete visits and prescriptions)
-        await pool.query(
+        await connection.query(
             'DELETE FROM patients WHERE patient_id = ?',
             [patientId]
         );
 
-        // STEP 4: Return success
+        connection.release();
+
         return res.status(200).json({
             message: 'Patient deleted successfully',
             patient: {
@@ -279,52 +343,61 @@ const deletePatient = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 6: getPatientHistory() =====
-// Purpose: Get complete medical history for one patient (visits + prescriptions)
-// Input: patient_id
-// Returns: 200 OK with patient info + all visits + prescriptions / 404 Not Found / 500 Error
 const getPatientHistory = async (req, res) => {
     try {
         const patientId = req.params.id;
 
-        // STEP 1: Validate patient_id
         if (!patientId) {
             return res.status(400).json({ error: 'Patient ID required' });
         }
 
-        // STEP 2: Get patient basic info
-        const [patientData] = await pool.query(
-            'SELECT patient_id, patient_name, phone_number, age, gender, address, registration_date FROM patients WHERE patient_id = ?',
+        const isDoctor = req.user && req.user.role === 'Doctor';
+
+        const connection = await pool.getConnection();
+
+        const [patientData] = await connection.query(
+            'SELECT p.patient_id, p.patient_name, p.phone_number, p.age, p.gender, p.address, p.weight, p.assigned_doctor_id, u.name as doctor_name, p.registration_date FROM patients p LEFT JOIN users u ON p.assigned_doctor_id = u.user_id WHERE p.patient_id = ?',
             [patientId]
         );
 
         if (patientData.length === 0) {
+            connection.release();
             return res.status(404).json({ error: 'Patient not found' });
         }
 
         const patient = patientData[0];
 
-        // STEP 3: Get all visits for this patient (ordered by date, newest first)
-        const [visits] = await pool.query(
+        // Doctor guard
+        if (isDoctor && patient.assigned_doctor_id !== req.user.id) {
+            connection.release();
+            return res.status(403).json({ error: 'Access denied. This patient is assigned to another doctor.' });
+        }
+
+        const [visits] = await connection.query(
             'SELECT visit_id, visit_date, diagnosis, blood_pressure, temperature, notes FROM visits WHERE patient_id = ? ORDER BY visit_date DESC',
             [patientId]
         );
 
-        // STEP 4: For each visit, get all prescriptions
         const visitsWithPrescriptions = [];
         for (const visit of visits) {
-            const [prescriptions] = await pool.query(
+            const [prescriptions] = await connection.query(
                 `SELECT 
                     p.prescription_id, 
                     p.medicine_id, 
                     m.medicine_name, 
                     p.dosage, 
+                    p.dosage_pattern,
+                    p.days,
+                    p.calculated_quantity,
+                    p.dispensed_quantity,
+                    p.dispensed_by,
+                    p.dispensed_at,
                     p.quantity, 
                     p.duration_days, 
                     p.created_at 
                 FROM prescriptions p 
-                JOIN medicines m ON p.medicine_id = m.medicine_id 
+                LEFT JOIN medicines m ON p.medicine_id = m.medicine_id 
                 WHERE p.visit_id = ?`,
                 [visit.visit_id]
             );
@@ -335,7 +408,8 @@ const getPatientHistory = async (req, res) => {
             });
         }
 
-        // STEP 5: Return complete history
+        connection.release();
+
         return res.status(200).json({
             message: 'Patient history retrieved successfully',
             patient: patient,
@@ -349,8 +423,6 @@ const getPatientHistory = async (req, res) => {
     }
 };
 
-
-// ===== EXPORT ALL FUNCTIONS =====
 module.exports = {
     registerPatient,
     getAllPatients,

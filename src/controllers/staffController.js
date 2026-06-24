@@ -1,15 +1,20 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 
+// Capitalize role for frontend list compatibility
+const formatRole = (role) => {
+    if (role === 'admin') return 'Admin';
+    if (role === 'doctor') return 'Doctor';
+    if (role === 'pharmacist') return 'Pharmacist';
+    return role;
+};
+
 // ============================================================
-// ADD STAFF (DOCTOR ONLY - PRIVATE ENDPOINT)
-// ============================================================
-// Only authenticated doctor can add staff
-// Staff roles: Pharmacist, Receptionist, Nurse
+// ADD STAFF ACCOUNT (ADMIN ONLY)
 // ============================================================
 const addStaff = async (req, res) => {
     try {
-        const { name, email, phoneNumber, password, confirmPassword, role } = req.body;
+        const { name, email, phoneNumber, password, confirmPassword, role, department } = req.body;
 
         // STEP 1: Validate all fields present
         if (!name || !email || !phoneNumber || !password || !confirmPassword || !role) {
@@ -19,16 +24,16 @@ const addStaff = async (req, res) => {
             });
         }
 
-        // STEP 2: Validate role is one of the allowed roles
-        const allowedRoles = ['Pharmacist', 'Receptionist', 'Nurse'];
-        if (!allowedRoles.includes(role)) {
+        // Convert role to lowercase for DB storage
+        const dbRole = role.toLowerCase();
+        if (dbRole !== 'doctor' && dbRole !== 'pharmacist') {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid role. Must be one of: Pharmacist, Receptionist, Nurse'
+                message: 'Invalid role. Must be Doctor or Pharmacist.'
             });
         }
 
-        // STEP 3: Check password match
+        // STEP 2: Check password match
         if (password !== confirmPassword) {
             return res.status(400).json({
                 success: false,
@@ -36,10 +41,11 @@ const addStaff = async (req, res) => {
             });
         }
 
-        // STEP 4: Query database for duplicate email
         const connection = await pool.getConnection();
+
+        // STEP 3: Query database for duplicate email
         const [emailCheck] = await connection.query(
-            'SELECT staff_id FROM staff WHERE email = ?',
+            'SELECT user_id FROM users WHERE email = ?',
             [email]
         );
 
@@ -51,9 +57,9 @@ const addStaff = async (req, res) => {
             });
         }
 
-        // STEP 5: Check if phone already exists
+        // STEP 4: Check if phone already exists
         const [phoneCheck] = await connection.query(
-            'SELECT staff_id FROM staff WHERE phone_number = ?',
+            'SELECT user_id FROM users WHERE phone_number = ?',
             [phoneNumber]
         );
 
@@ -65,25 +71,25 @@ const addStaff = async (req, res) => {
             });
         }
 
-        // STEP 6: Hash password with bcrypt (10 salt rounds)
+        // STEP 5: Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // STEP 7: Insert into staff table
+        // STEP 6: Insert into users table
         await connection.query(
-            'INSERT INTO staff (name, email, phone_number, password, role, is_active) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, email, phoneNumber, hashedPassword, role, true]
+            'INSERT INTO users (name, email, phone_number, password, role, department, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [name, email, phoneNumber, hashedPassword, dbRole, dbRole === 'doctor' ? department || null : null, true]
         );
 
         connection.release();
 
-        // STEP 8: Return success
         return res.status(201).json({
             success: true,
             message: `${role} account created successfully.`,
             staff: {
                 name: name,
                 email: email,
-                role: role
+                role: role,
+                department: department
             }
         });
 
@@ -91,39 +97,106 @@ const addStaff = async (req, res) => {
         console.error('Add staff error:', error);
         return res.status(500).json({
             success: false,
-            message: 'Database connection failed. Please check WAMP status.'
+            message: 'Database connection failed.'
         });
     }
 };
 
 // ============================================================
-// GET ALL STAFF (DOCTOR ONLY - VIEW ALL STAFF)
+// GET ALL STAFF (ADMIN ONLY)
 // ============================================================
 const getAllStaff = async (req, res) => {
     try {
         const connection = await pool.getConnection();
-        const [staff] = await connection.query(
-            'SELECT staff_id, name, email, phone_number, role, is_active, created_at FROM staff ORDER BY created_at DESC'
+        // Fetch all non-admin users
+        const [users] = await connection.query(
+            "SELECT user_id as staff_id, name, email, phone_number, role, department, is_active, created_at FROM users WHERE role != 'admin' ORDER BY created_at DESC"
         );
 
         connection.release();
 
+        // Format roles
+        const formattedUsers = users.map(u => ({
+            ...u,
+            role: formatRole(u.role)
+        }));
+
         return res.status(200).json({
             success: true,
-            staff: staff,
-            total: staff.length
+            staff: formattedUsers,
+            total: formattedUsers.length
         });
 
     } catch (error) {
         console.error('Get staff error:', error);
         return res.status(500).json({
             success: false,
-            message: 'Database connection failed. Please check WAMP status.'
+            message: 'Database connection failed.'
+        });
+    }
+};
+
+// ============================================================
+// DELETE/DEACTIVATE STAFF (ADMIN ONLY)
+// ============================================================
+const deleteStaff = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const connection = await pool.getConnection();
+        
+        // Delete user
+        await connection.query(
+            "DELETE FROM users WHERE user_id = ? AND role != 'admin'",
+            [id]
+        );
+
+        connection.release();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Staff member deleted successfully.'
+        });
+
+    } catch (error) {
+        console.error('Delete staff error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Database connection failed.'
+        });
+    }
+};
+
+// ============================================================
+// GET ACTIVE DOCTORS (AUTHENTICATED ONLY)
+// ============================================================
+const getActiveDoctors = async (req, res) => {
+    try {
+        const connection = await pool.getConnection();
+        const [doctors] = await connection.query(
+            "SELECT user_id, name, department FROM users WHERE role = 'doctor' AND is_active = ? ORDER BY name ASC",
+            [true]
+        );
+
+        connection.release();
+
+        return res.status(200).json({
+            success: true,
+            doctors
+        });
+
+    } catch (error) {
+        console.error('Get active doctors error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Database connection failed.'
         });
     }
 };
 
 module.exports = {
     addStaff,
-    getAllStaff
+    getAllStaff,
+    deleteStaff,
+    getActiveDoctors
 };

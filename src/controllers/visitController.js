@@ -1,17 +1,12 @@
 const pool = require('../config/db');
 
 // ===== FUNCTION 1: createVisit() =====
-// Purpose: Create a new visit record for a patient
-// Input: { patient_id, visit_date, diagnosis, blood_pressure, temperature, notes }
-// Doctor_id is automatically set from JWT token (req.user.id)
-// Returns: 201 Created / 400 Bad Request / 404 Not Found / 500 Error
 const createVisit = async (req, res) => {
     try {
-        // STEP 1: Extract fields from request body
         const { patient_id, visit_date, diagnosis, blood_pressure, temperature, notes } = req.body;
-        const doctor_id = req.user.id; // Get doctor_id from JWT token (authMiddleware decoded it)
+        const doctor_id = req.user.id;
+        const isDoctor = req.user && req.user.role === 'Doctor';
 
-        // STEP 2: Validate all required fields exist
         if (!patient_id || !visit_date) {
             return res.status(400).json({ 
                 error: 'Required fields: patient_id, visit_date' 
@@ -22,38 +17,43 @@ const createVisit = async (req, res) => {
         const finalBloodPressure = blood_pressure || 'N/A';
         const finalTemperature = temperature ? parseFloat(temperature) : 98.6;
 
-        // STEP 3: Validate blood_pressure format (should be like "120/80")
         if (finalBloodPressure !== 'N/A' && !finalBloodPressure.match(/^\d+\/\d+$/)) {
             return res.status(400).json({ 
                 error: 'Blood pressure must be in format: SYS/DIA (e.g., 120/80)' 
             });
         }
 
-        // STEP 4: Validate temperature is a number between 90 and 110 (realistic range)
         if (isNaN(finalTemperature) || finalTemperature < 90 || finalTemperature > 110) {
             return res.status(400).json({ 
                 error: 'Temperature must be a number between 90 and 110' 
             });
         }
 
-        // STEP 5: Check if patient exists in database
-        const [patientExists] = await pool.query(
-            'SELECT patient_id FROM patients WHERE patient_id = ?',
+        const connection = await pool.getConnection();
+
+        // Check if patient exists and is assigned to this doctor
+        const [patientCheck] = await connection.query(
+            'SELECT patient_id, assigned_doctor_id FROM patients WHERE patient_id = ?',
             [patient_id]
         );
 
-        if (patientExists.length === 0) {
+        if (patientCheck.length === 0) {
+            connection.release();
             return res.status(404).json({ error: 'Patient not found' });
         }
 
-        // STEP 6: Insert new visit into visits table
-        // doctor_id is taken from JWT token (req.user.id) - cannot be spoofed
-        const [result] = await pool.query(
+        if (isDoctor && patientCheck[0].assigned_doctor_id !== doctor_id) {
+            connection.release();
+            return res.status(403).json({ error: 'Access denied. You can only create visits for patients assigned to you.' });
+        }
+
+        const [result] = await connection.query(
             'INSERT INTO visits (doctor_id, patient_id, visit_date, diagnosis, blood_pressure, temperature, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
             [doctor_id, patient_id, visit_date, finalDiagnosis, finalBloodPressure, finalTemperature, notes || null]
         );
 
-        // STEP 7: Return success with new visit_id
+        connection.release();
+
         return res.status(201).json({
             message: 'Visit created successfully',
             visit: {
@@ -74,23 +74,33 @@ const createVisit = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 2: getPatientVisits() =====
-// Purpose: Get all visits for a specific patient
-// Input: patient_id (from URL param)
-// Returns: 200 OK with array / 500 Error
 const getPatientVisits = async (req, res) => {
     try {
-        // STEP 1: Extract patient_id from URL params
         const { patient_id } = req.params;
+        const isDoctor = req.user && req.user.role === 'Doctor';
 
-        // STEP 2: Query all visits for this patient, ordered by most recent first
-        const [visits] = await pool.query(
+        const connection = await pool.getConnection();
+
+        // Doctor check
+        if (isDoctor) {
+            const [patientCheck] = await connection.query(
+                'SELECT assigned_doctor_id FROM patients WHERE patient_id = ?',
+                [patient_id]
+            );
+            if (patientCheck.length === 0 || patientCheck[0].assigned_doctor_id !== req.user.id) {
+                connection.release();
+                return res.status(403).json({ error: 'Access denied. Patient is assigned to another doctor.' });
+            }
+        }
+
+        const [visits] = await connection.query(
             'SELECT visit_id, doctor_id, patient_id, visit_date, diagnosis, blood_pressure, temperature, notes, created_at FROM visits WHERE patient_id = ? ORDER BY visit_date DESC',
             [patient_id]
         );
 
-        // STEP 3: Return all visits
+        connection.release();
+
         return res.status(200).json({
             message: 'Patient visits retrieved successfully',
             total: visits.length,
@@ -103,39 +113,36 @@ const getPatientVisits = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 3: updateVisit() =====
-// Purpose: Update an existing visit record (partial update)
-// Input: visit_id (from URL), { fields to update }
-// Cannot update: visit_id, doctor_id, patient_id (foreign keys)
-// Returns: 200 OK / 400 Bad Request / 404 Not Found / 500 Error
 const updateVisit = async (req, res) => {
     try {
-        // STEP 1: Extract visit_id from URL params (route uses :id)
         const { id } = req.params;
-        const visit_id = id;
-
-        // STEP 2: Extract updateable fields from request body
         const { diagnosis, blood_pressure, temperature, notes } = req.body;
+        const isDoctor = req.user && req.user.role === 'Doctor';
 
-        // STEP 3: Validate at least one field is provided for update
         if (!diagnosis && !blood_pressure && !temperature && !notes) {
             return res.status(400).json({ 
-                error: 'Provide at least one field to update: diagnosis, blood_pressure, temperature, or notes' 
+                error: 'Provide at least one field to update.' 
             });
         }
 
-        // STEP 4: Check if visit exists
-        const [visitExists] = await pool.query(
-            'SELECT visit_id FROM visits WHERE visit_id = ?',
-            [visit_id]
+        const connection = await pool.getConnection();
+
+        const [visitCheck] = await connection.query(
+            'SELECT visit_id, doctor_id FROM visits WHERE visit_id = ?',
+            [id]
         );
 
-        if (visitExists.length === 0) {
+        if (visitCheck.length === 0) {
+            connection.release();
             return res.status(404).json({ error: 'Visit not found' });
         }
 
-        // STEP 5: Build dynamic UPDATE query with only provided fields
+        if (isDoctor && visitCheck[0].doctor_id !== req.user.id) {
+            connection.release();
+            return res.status(403).json({ error: 'Access denied. You can only update your own visits.' });
+        }
+
         const updateFields = [];
         const updateValues = [];
 
@@ -145,8 +152,8 @@ const updateVisit = async (req, res) => {
         }
 
         if (blood_pressure !== undefined) {
-            // Validate blood_pressure format
             if (blood_pressure && blood_pressure !== 'N/A' && !blood_pressure.match(/^\d+\/\d+$/)) {
+                connection.release();
                 return res.status(400).json({ 
                     error: 'Blood pressure must be in format: SYS/DIA (e.g., 120/80)' 
                 });
@@ -156,9 +163,9 @@ const updateVisit = async (req, res) => {
         }
 
         if (temperature !== undefined) {
-            // Validate temperature is a number
             const tempVal = temperature ? parseFloat(temperature) : 98.6;
             if (isNaN(tempVal) || tempVal < 90 || tempVal > 110) {
+                connection.release();
                 return res.status(400).json({ 
                     error: 'Temperature must be a number between 90 and 110' 
                 });
@@ -172,20 +179,18 @@ const updateVisit = async (req, res) => {
             updateValues.push(notes || null);
         }
 
-        // STEP 6: Add visit_id to query parameters (for WHERE clause)
-        updateValues.push(visit_id);
+        updateValues.push(id);
 
-        // STEP 7: Execute dynamic UPDATE query
         const updateQuery = `UPDATE visits SET ${updateFields.join(', ')} WHERE visit_id = ?`;
-        await pool.query(updateQuery, updateValues);
+        await connection.query(updateQuery, updateValues);
 
-        // STEP 8: Fetch updated visit to return
-        const [updatedVisit] = await pool.query(
+        const [updatedVisit] = await connection.query(
             'SELECT visit_id, doctor_id, patient_id, visit_date, diagnosis, blood_pressure, temperature, notes FROM visits WHERE visit_id = ?',
-            [visit_id]
+            [id]
         );
 
-        // STEP 9: Return updated visit
+        connection.release();
+
         return res.status(200).json({
             message: 'Visit updated successfully',
             visit: updatedVisit[0]
@@ -197,38 +202,39 @@ const updateVisit = async (req, res) => {
     }
 };
 
-
 // ===== FUNCTION 4: deleteVisit() =====
-// Purpose: Delete a visit record (CASCADE deletes all related prescriptions)
-// Input: visit_id (from URL)
-// Returns: 200 OK / 404 Not Found / 500 Error
 const deleteVisit = async (req, res) => {
     try {
-        // STEP 1: Extract visit_id from URL params (route uses :id)
         const { id } = req.params;
-        const visit_id = id;
+        const isDoctor = req.user && req.user.role === 'Doctor';
 
-        // STEP 2: Check if visit exists
-        const [visitExists] = await pool.query(
-            'SELECT visit_id FROM visits WHERE visit_id = ?',
-            [visit_id]
+        const connection = await pool.getConnection();
+
+        const [visitCheck] = await connection.query(
+            'SELECT visit_id, doctor_id FROM visits WHERE visit_id = ?',
+            [id]
         );
 
-        if (visitExists.length === 0) {
+        if (visitCheck.length === 0) {
+            connection.release();
             return res.status(404).json({ error: 'Visit not found' });
         }
 
-        // STEP 3: Delete the visit
-        // CASCADE will automatically delete all related prescriptions in prescriptions table
-        await pool.query(
+        if (isDoctor && visitCheck[0].doctor_id !== req.user.id) {
+            connection.release();
+            return res.status(403).json({ error: 'Access denied. You can only delete your own visits.' });
+        }
+
+        await connection.query(
             'DELETE FROM visits WHERE visit_id = ?',
-            [visit_id]
+            [id]
         );
 
-        // STEP 4: Return success
+        connection.release();
+
         return res.status(200).json({
             message: 'Visit deleted successfully',
-            visit_id: visit_id
+            visit_id: id
         });
 
     } catch (error) {
@@ -237,14 +243,26 @@ const deleteVisit = async (req, res) => {
     }
 };
 
+// ===== FUNCTION 5: getRecentVisits() =====
 const getRecentVisits = async (req, res) => {
     try {
-        const [visits] = await pool.query(
-            `SELECT v.visit_id, v.patient_id, p.patient_name, v.visit_date, v.diagnosis, v.blood_pressure, v.temperature, v.notes 
+        const isDoctor = req.user && req.user.role === 'Doctor';
+        let queryStr = `
+             SELECT v.visit_id, v.patient_id, p.patient_name, v.visit_date, v.diagnosis, v.blood_pressure, v.temperature, v.notes 
              FROM visits v 
-             JOIN patients p ON v.patient_id = p.patient_id 
-             ORDER BY v.visit_date DESC LIMIT 10`
-        );
+             JOIN patients p ON v.patient_id = p.patient_id
+        `;
+        const params = [];
+
+        if (isDoctor) {
+            queryStr += ' WHERE p.assigned_doctor_id = ?';
+            params.push(req.user.id);
+        }
+
+        queryStr += ' ORDER BY v.visit_date DESC LIMIT 10';
+
+        const [visits] = await pool.query(queryStr, params);
+        
         return res.status(200).json({
             success: true,
             visits
@@ -255,7 +273,6 @@ const getRecentVisits = async (req, res) => {
     }
 };
 
-// Export all functions
 module.exports = {
     createVisit,
     getPatientVisits,

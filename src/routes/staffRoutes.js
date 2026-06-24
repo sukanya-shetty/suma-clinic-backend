@@ -4,21 +4,20 @@ const staffController = require('../controllers/staffController');
 const { authMiddleware, authorizeRole } = require('../middleware/auth');
 
 // ============================================================
-// STAFF ROUTES
+// STAFF ROUTES (ADMIN ONLY)
 // ============================================================
-// These routes are used by the doctor to manage staff accounts
-// In future, we'll add authentication middleware to protect these
-// ============================================================
+
+// GET /api/staff/doctors
+// Get active doctors roster (Accessible by any logged-in user)
+router.get('/doctors', authMiddleware, staffController.getActiveDoctors);
 
 // POST /api/staff/add-staff
-// Add new staff member (Pharmacist, Receptionist, Nurse)
-// Request body: { name, email, phoneNumber, password, confirmPassword, role }
-// Response: 201 Created or 400 Bad Request or 500 Error
-router.post('/add-staff', authMiddleware,authorizeRole('Doctor'), staffController.addStaff);
+router.post('/add-staff', authMiddleware, authorizeRole('Admin'), staffController.addStaff);
 
 // GET /api/staff/all
-// Get all staff members
-// Response: 200 OK with array of staff or 500 Error
-router.get('/all', authMiddleware, staffController.getAllStaff);
+router.get('/all', authMiddleware, authorizeRole('Admin'), staffController.getAllStaff);
+
+// DELETE /api/staff/:id
+router.delete('/:id', authMiddleware, authorizeRole('Admin'), staffController.deleteStaff);
 
 module.exports = router;
